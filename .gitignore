@@ -1,0 +1,25 @@
+# Local environment files (never commit real credentials)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.db
+*.sqlite3
+data/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db

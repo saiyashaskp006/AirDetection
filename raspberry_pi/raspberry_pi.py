@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
-"""Read AeroSense sensors through MCP3008 and POST measurements to the API."""
+"""Cloud mode (mode 2): read sensors and POST readings to the AERO-HUB API.
+
+The API is the only component that talks to MongoDB Atlas. Keep the database
+credentials on the backend server, not on the Raspberry Pi.
+
+For direct mode (mode 1) run the FastAPI backend on the Pi instead; see the
+README section "Mode 1 - Raspberry Pi direct".
+"""
 
 import logging
 import math
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load raspberry_pi/.env regardless of the shell's current directory.
+load_dotenv(Path(__file__).resolve().with_name(".env"))
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(message)s",
@@ -18,9 +27,11 @@ logging.basicConfig(
 logger = logging.getLogger("airsense")
 
 API_URL = os.getenv("AEROSENSE_API_URL", "http://localhost:8000").rstrip("/")
+API_KEY = os.getenv("AEROSENSE_API_KEY", "").strip()
 INTERVAL = max(1, float(os.getenv("READ_INTERVAL_SECONDS", "5")))
 VREF = float(os.getenv("ADC_VREF", "3.3"))
 LOAD_RESISTOR_KOHM = float(os.getenv("MQ_LOAD_RESISTOR_KOHM", "10"))
+HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
 
 def analog_voltage(spi, channel):
@@ -120,6 +131,7 @@ def send_reading(payload, session):
             response = session.post(
                 f"{API_URL}/api/sensors/readings",
                 json=payload,
+                headers=HEADERS,
                 timeout=5,
             )
             response.raise_for_status()
@@ -153,7 +165,12 @@ def main():
         initial_value=False,
     )
     session = requests.Session()
-    logger.info("AeroSense sensor client sending to %s every %ss", API_URL, INTERVAL)
+    logger.info(
+        "AERO-HUB sensor client sending to %s every %ss (device key %s)",
+        API_URL,
+        INTERVAL,
+        "configured" if API_KEY else "disabled",
+    )
     try:
         while True:
             started = time.monotonic()

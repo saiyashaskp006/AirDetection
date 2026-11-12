@@ -43,7 +43,8 @@ class ReadingCreate(BaseModel):
 class ReadingResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    # MongoDB uses string ObjectIds; the local file store uses integers.
+    id: str | int
     timestamp: datetime
     temperature: float | None
     pressure: float | None

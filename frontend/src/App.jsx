@@ -8,7 +8,7 @@ import { MetricCard } from "./components/MetricCard";
 import { TrendChart } from "./components/Charts";
 import { LocationMap } from "./components/LocationMap";
 import { useLiveData } from "./hooks/useLiveData";
-import { api } from "./services/api";
+import { API_URL, api, dataMode, websocketUrl } from "./services/api";
 
 const pages = {
   overview: "Air quality overview",
@@ -637,7 +637,7 @@ function SettingsPage({ notify }) {
       </div>
       <p className="setting-note"><CircleAlert size={14} /> Browser location is requested only after you click the button. Coordinates are saved only if you choose Save.</p>
     </form>
-    <section className="panel settings-panel connection-settings"><div className="panel-heading"><div><h2>API connection</h2><p>Frontend data services use the VITE_API_URL environment variable.</p></div></div><div className="connection-detail"><span>REST API</span><code>{import.meta.env.VITE_API_URL || "http://localhost:8000"}</code><span>WebSocket</span><code>/ws/readings</code></div></section>
+    <section className="panel settings-panel connection-settings"><div className="panel-heading"><div><h2>API connection</h2><p>Frontend data services use the VITE_API_URL, VITE_WS_URL, and VITE_DATA_MODE environment variables.</p></div></div><div className="connection-detail"><span>Data mode</span><code>{dataMode === "direct" ? "Direct Raspberry Pi" : "Cloud + MongoDB"}</code><span>REST API</span><code>{API_URL}</code><span>WebSocket</span><code>{websocketUrl()}</code></div></section>
   </>;
 }
 

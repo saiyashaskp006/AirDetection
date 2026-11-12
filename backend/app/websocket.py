@@ -1,4 +1,8 @@
+import logging
+
 from fastapi import WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger("aerohub.websocket")
 
 
 class ConnectionManager:
@@ -18,6 +22,9 @@ class ConnectionManager:
             try:
                 await connection.send_json(message)
             except (WebSocketDisconnect, RuntimeError, OSError):
+                stale.append(connection)
+            except Exception:
+                logger.exception("Could not send a WebSocket update.")
                 stale.append(connection)
         for connection in stale:
             self.disconnect(connection)
