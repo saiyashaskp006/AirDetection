@@ -85,7 +85,7 @@ AirDetection/
 │   │   ├── store.py        # MongoDB / JSONL / memory storage backends
 │   │   ├── services.py     # ingestion, alerts, scoring, area assessment
 │   │   ├── routes.py       # REST API
-│   │   ├── hardware.py     # direct-mode MCP3008/MQ/BMP280 reader
+│   │   ├── hardware.py     # direct-mode ADC/MQ/BMP280/LCD/GPS reader
 │   │   ├── check_mongo.py  # connection + index verification
 │   │   └── main.py         # FastAPI app, demo loop, change-stream watcher
 │   ├── .env.example        # every backend option
@@ -95,16 +95,26 @@ AirDetection/
 │   └── .env.example
 ├── raspberry_pi/
 │   ├── raspberry_pi.py     # cloud-mode sensor client (HTTP POST)
+│   ├── adc.py              # Arduino / ADS1115 / ADS1015 / MCP3008 backends
+│   ├── peripherals.py      # optional LCD and phone GPS
 │   └── .env.example
-└── docs/MONGODB_SETUP.md
+├── arduino/
+│   └── air_sensors/
+│       └── air_sensors.ino # Uno ADC bridge sketch
+├── docs/
+│   ├── MONGODB_SETUP.md
+│   ├── HARDWARE_WIRING.md
+│   └── ARDUINO_ADC.md
 ```
 
 ## Requirements
 
 - Python 3.10+ and Node.js 18+ (Node 20 LTS recommended).
 - A MongoDB Atlas account for mode 2. No account is needed for mode 1.
-- Hardware: Raspberry Pi 3B/4, BMP280, MQ-7, MQ-135, Sharp GP2Y101AU0F, and an
-  MCP3008 ADC for the analog sensors.
+- Hardware: Raspberry Pi 3B/4/5, BMP280 (HW-611 is fine), MQ-7, MQ-135,
+  Sharp GP2Y1010AU0F, and an ADC. An **Arduino Uno over USB** is supported
+  without buying anything extra; an **ADS1115** (or ADS1015/MCP3008) also works.
+  Optional: a 16x2 I2C LCD and an Android/iPhone providing GPS over Wi-Fi.
 
 ## Mode 2 — Cloud + MongoDB quick start
 
@@ -172,7 +182,7 @@ On the Pi, from `raspberry_pi/`:
 ```bash
 python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
-pip install requests python-dotenv gpiozero Adafruit-BMP
+pip install -r requirements.txt
 cp .env.example .env
 ```
 
@@ -185,6 +195,16 @@ AEROSENSE_SITE_NAME=North campus
 AEROSENSE_LATITUDE=28.6139
 AEROSENSE_LONGITUDE=77.2090
 READ_INTERVAL_SECONDS=5
+
+# Optional, see docs/HARDWARE_WIRING.md
+ADC_BACKEND=arduino        # arduino / ads1115 / ads1015 / mcp3008 / none
+ARDUINO_PORT=/dev/serial0  # GPIO UART; /dev/ttyACM0 for USB
+ARDUINO_BOOT_SECONDS=0     # 2.0 for USB (the Uno resets on open)
+ARDUINO_VREF=5.0
+ARDUINO_DUST_LED=true
+GPS_ENABLED=false
+LCD_ENABLED=false
+BMP280_I2C_ADDRESS=0x77
 ```
 
 Then run:
@@ -209,7 +229,7 @@ the dashboard on the LAN.
    python3 -m venv .venv --system-site-packages
    source .venv/bin/activate
    pip install -r requirements.txt
-   pip install spidev gpiozero Adafruit-BMP
+   pip install -r ../raspberry_pi/requirements.txt
    cp .env.example .env
    ```
 
@@ -226,6 +246,16 @@ the dashboard on the LAN.
    DEVICE_LATITUDE=28.6139
    DEVICE_LONGITUDE=77.2090
    FRONTEND_ORIGINS=http://localhost:5173,http://192.168.1.50:8000
+
+   # Optional, see docs/HARDWARE_WIRING.md
+   ADC_BACKEND=arduino        # arduino / ads1115 / ads1015 / mcp3008 / none
+   ARDUINO_PORT=/dev/serial0  # GPIO UART; /dev/ttyACM0 for USB
+   ARDUINO_BOOT_SECONDS=0     # 2.0 for USB (the Uno resets on open)
+   ARDUINO_VREF=5.0
+   ARDUINO_DUST_LED=true
+   BMP280_I2C_ADDRESS=0x77
+   GPS_ENABLED=false
+   LCD_ENABLED=false
    ```
 
    Leave `MONGODB_URI` empty — mode 1 does not use it.
@@ -364,17 +394,56 @@ backend so validation and API-key checks apply.
 
 ### Wiring
 
-- MCP3008 `VDD`/`VREF` → 3.3V; `AGND`/`DGND` → GND; `CLK` → GPIO11/SCLK;
-  `DOUT` → GPIO9/MISO; `DIN` → GPIO10/MOSI; `CS/SHDN` → GPIO8/CE0.
-- MQ-7 analog output → MCP3008 channel 0; MQ-135 → channel 1; Sharp dust →
-  channel 2.
-- Connect the Sharp LED control to GPIO17 through the correct driver/transistor
-  circuit. Follow the datasheet pulse timing.
-- **Never connect a 5V analog output directly to the 3.3V MCP3008/Pi.** Use a
-  level shifter/voltage divider and a common ground.
-- BMP280 is I²C: enable I²C and wire to the correct 3.3V/GND/SDA/SCL pins.
+Full pin-by-pin tables, divider math, LCD and GPS setup:
+[`docs/HARDWARE_WIRING.md`](docs/HARDWARE_WIRING.md).
 
-Enable SPI and I²C with `sudo raspi-config`.
+Summary:
+
+- **ADC.** The Pi has no analog inputs. With the **Arduino Uno** you already
+  own, flash [`arduino/air_sensors/air_sensors.ino`](arduino/air_sensors/air_sensors.ino).
+  It converts the analog inputs to 10-bit numbers and sends them over serial.
+  Either connect it over USB (`ARDUINO_PORT=/dev/ttyACM0`), or power the Uno
+  separately and use the GPIO UART (`ARDUINO_PORT=/dev/serial0`, GND + TX/RX —
+  see the doc). Set `ADC_BACKEND=arduino`, `ARDUINO_VREF=5.0` and
+  `ARDUINO_DUST_LED=true`.
+  Details: [`docs/ARDUINO_ADC.md`](docs/ARDUINO_ADC.md).
+- **Arduino pins:** MQ-7 `AOUT` → `A0`, MQ-135 `AOUT` → `A1`, Sharp dust `Vo` →
+  `A2`, dust LED drive → `D7` (1 kΩ to the NPN base). The Uno ADC is 5 V
+  tolerant, so connect the MQ outputs directly and keep `MQ_DIVIDER_RATIO=1`.
+- **If you later buy an ADS1115** (I²C, 16-bit): `VDD` → 3.3 V (pin 1), `GND` →
+  pin 6, `SCL` → pin 5, `SDA` → pin 3, `ADDR` → GND for `0x48`; set
+  `ADC_BACKEND=ads1115`. Then fit a 10 kΩ/20 kΩ divider on each MQ `AOUT` and
+  set `MQ_DIVIDER_RATIO=1.5`. **Never feed 5 V directly into a 3.3 V-powered
+  ADC.**
+- **An MCP3008 also works** if you have one: `VDD`/`VREF` → 3.3 V (pin 1/17),
+  `AGND`/`DGND` → GND, `CLK` → pin 23, `DOUT` → pin 21, `DIN` → pin 19,
+  `CS/SHDN` → pin 24, then set `ADC_BACKEND=mcp3008`.
+- Sharp dust `Vo` → `A2` on whichever ADC; with the Arduino, set
+  `ARDUINO_DUST_LED=true` and let it drive `D7` (datasheet-accurate timing). If
+  the Pi drives the LED instead, set `DUST_LED_ACTIVE_HIGH=true` for an NPN
+  transistor.
+- BMP280 → 3.3 V, GND, SDA (pin 3), SCL (pin 5). HW-611 boards answer on
+  `0x76` or `0x77`; set `BMP280_I2C_ADDRESS` to what `i2cdetect -y 1` shows.
+
+Enable I²C for the BMP280/LCD with `sudo raspi-config`; SPI is only needed for
+the MCP3008 and no interface changes are needed for the Arduino. Then run
+`pip install -r raspberry_pi/requirements.txt`. Set `ADC_BACKEND=none` to run
+GPS/LCD/BMP280 only while the ADC is unavailable.
+
+### Optional LCD and phone GPS
+
+Both are disabled by default and local to the Pi (they work in either mode).
+
+- **16x2 I2C LCD.** Uncomment `RPLCD` in `raspberry_pi/requirements.txt` and
+  reinstall, then set `LCD_ENABLED=true` and the backpack address shown by
+  `i2cdetect -y 1` (`0x27` or `0x3F`). The screen cycles temperature/pressure,
+  CO/MQ-135, dust and GPS pages every `LCD_PAGE_SECONDS`.
+- **Phone GPS.** Install [gpsdRelay](https://f-droid.org/packages/io.github.project_kaat.gpsdrelay/)
+  (TCP or UDP) or GPSd Forwarder, the app from the KM4ACK video (UDP). No gpsd
+  is needed. Set `GPS_ENABLED=true`, then `GPS_MODE=tcp` when the phone listens
+  and the Pi connects, or `GPS_MODE=udp` when the Pi listens. Fill in
+  `GPS_HOST`/`GPS_PORT`; coordinates are attached to every reading, with
+  `location_name` falling back to `GPS_LOCATION_NAME`.
 
 ### Calibration
 
@@ -442,7 +511,12 @@ Official references: [WHO Global Air Quality Guidelines (2021)](https://www.who.
 
 - Check the startup log for “Direct hardware mode is enabled but the sensors
   could not be opened.”
-- Enable SPI/I²C, verify wiring, and install `spidev gpiozero Adafruit-BMP`.
+- Enable I²C (and SPI for an MCP3008), verify wiring, and install
+  `pip install -r raspberry_pi/requirements.txt`.
+- Confirm `ADC_BACKEND` matches what you actually have. For the Arduino, check
+  the port (`/dev/ttyACM0`, `/dev/ttyUSB0`, or `/dev/serial0` for the GPIO
+  UART) and `dialout` group membership; for an ADS1115, `i2cdetect -y 1` must
+  show `48`.
 - Run the API on the Pi (not on your laptop) for hardware mode.
 
 ### Alerts are generated twice or not at all

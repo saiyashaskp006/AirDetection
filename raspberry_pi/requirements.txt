@@ -1,0 +1,23 @@
+# Raspberry Pi sensor node (cloud mode) and direct-mode hardware extras.
+# Install with: pip install -r requirements.txt
+
+requests
+python-dotenv
+
+# SPI ADC (only needed for ADC_BACKEND=mcp3008)
+spidev
+gpiozero
+
+# I2C ADC (ADS1015 / ADS1115) and the optional I2C LCD
+smbus2
+
+# Arduino Uno as the ADC over USB serial (ADC_BACKEND=arduino)
+pyserial
+
+# BMP280 / HW-611. The modern CircuitPython driver is preferred; the code also
+# accepts the legacy Adafruit-BMP package if that is what you already have.
+adafruit-circuitpython-bmp280
+adafruit-blinka
+
+# Optional 16x2 I2C LCD (PCF8574 backpack). Only needed when LCD_ENABLED=true.
+# RPLCD

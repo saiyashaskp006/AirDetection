@@ -4,12 +4,13 @@ import asyncio
 import logging
 from contextlib import asynccontextmanager, suppress
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import get_settings
 from app.hardware import HardwareReader
-from app.routes import router
+from app.routes import health_report, router
 from app.schemas import ReadingCreate
 from app.services import (
     RecentReadingIds,
@@ -20,6 +21,11 @@ from app.services import (
 )
 from app.store import create_store
 from app.websocket import manager
+
+try:  # pymongo ships with motor, but the file backend does not need it.
+    from pymongo.errors import PyMongoError
+except ImportError:  # pragma: no cover - only when motor is not installed
+    PyMongoError = None
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,7 +62,7 @@ async def hardware_loop(app: FastAPI) -> None:
     except Exception:
         logger.exception(
             "Direct hardware mode is enabled but the sensors could not be opened. "
-            "Check SPI/I2C, wiring and the Raspberry Pi packages."
+            "Check ADC_BACKEND, I2C/SPI, wiring and the Raspberry Pi packages."
         )
         return
 
@@ -154,6 +160,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+
+
+if PyMongoError is not None:
+
+    @app.exception_handler(PyMongoError)
+    async def database_unavailable(request: Request, exc: PyMongoError):
+        """Return a readable 503 instead of a 500 traceback when Atlas is down.
+
+        The most common causes of a handshake failure are a public IP that is
+        missing from the Atlas Network Access list and a paused free cluster.
+        """
+        logger.warning("Database unavailable for %s: %s", request.url.path, exc)
+        return JSONResponse(
+            status_code=503,
+            content={
+                "detail": (
+                    "Database unavailable. Check MONGODB_URI and that this machine's "
+                    "public IP is in the Atlas Network Access list "
+                    "(run python -m app.check_mongo for details)."
+                ),
+                "error": type(exc).__name__,
+            },
+        )
+
+
+@app.get("/health", include_in_schema=False)
+async def health_alias():
+    """Alias so simple uptime probes can hit /health instead of /api/health."""
+    return await health_report(app.state.store, app.state.settings)
 
 
 @app.websocket("/ws/readings")

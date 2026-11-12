@@ -185,6 +185,10 @@ async def health(
     store: Store = Depends(get_store),
     settings: Settings = Depends(get_runtime_settings),
 ):
+    return await health_report(store, settings)
+
+
+async def health_report(store: Store, settings: Settings) -> dict:
     try:
         if hasattr(store, "health"):
             info = await store.health()
