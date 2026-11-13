@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Cloud mode (mode 2): read sensors and POST readings to the AERO-HUB API.
 
+Sensors are sampled and uploaded once per second (``SAMPLE_INTERVAL_SECONDS``,
+default 1 s). Every reading is sent immediately, so the dashboard updates in
+real time. Each request is tiny; 1 Hz is far below the Atlas free-tier limits.
+
 The API is the only component that talks to MongoDB Atlas. Keep the database
 credentials on the backend server, not on the Raspberry Pi.
 
@@ -35,7 +39,12 @@ logger = logging.getLogger("airsense")
 
 API_URL = os.getenv("AEROSENSE_API_URL", "http://localhost:8000").rstrip("/")
 API_KEY = os.getenv("AEROSENSE_API_KEY", "").strip()
-INTERVAL = max(1, float(os.getenv("READ_INTERVAL_SECONDS", "5")))
+# One sample and one upload per second. This is tiny (a few hundred bytes per
+# request) and keeps the dashboard live. Slow it down with SAMPLE_INTERVAL_SECONDS.
+INTERVAL = max(
+    0.2,
+    float(os.getenv("SAMPLE_INTERVAL_SECONDS", os.getenv("READ_INTERVAL_SECONDS", "1"))),
+)
 MQ_SUPPLY_VOLTAGE = float(os.getenv("MQ_SUPPLY_VOLTAGE", "5"))
 _LEGACY_DIVIDER = max(1.0, float(os.getenv("ADC_DIVIDER_RATIO", "1")))
 MQ_DIVIDER_RATIO = max(1.0, float(os.getenv("MQ_DIVIDER_RATIO", _LEGACY_DIVIDER)))
@@ -156,14 +165,31 @@ def read_dust_voltage(adc, led):
         return None
 
 
-def calibrated_dust_estimate(voltage):
-    """Optional linear calibration: estimate = (volts - zero) * configured scale."""
-    zero = os.getenv("DUST_ZERO_VOLTAGE")
-    scale = os.getenv("DUST_UG_M3_PER_V")
-    if voltage is None or zero is None or scale is None:
-        return None
-    return round(max(0, (voltage - float(zero)) * float(scale)), 2)
+_dust_calibration_warned = False
 
+
+def calibrated_dust_estimate(voltage):
+    """Optional linear calibration: estimate = (volts - zero) * configured scale.
+
+    Blank or invalid values disable the estimate; they must never stop a
+    reading from being uploaded.
+    """
+    global _dust_calibration_warned
+    zero = (os.getenv("DUST_ZERO_VOLTAGE") or "").strip()
+    scale = (os.getenv("DUST_UG_M3_PER_V") or "").strip()
+    if voltage is None or not zero or not scale:
+        return None
+    try:
+        return round(max(0, (voltage - float(zero)) * float(scale)), 2)
+    except ValueError:
+        if not _dust_calibration_warned:
+            _dust_calibration_warned = True
+            logger.warning(
+                "Ignoring invalid dust calibration (DUST_ZERO_VOLTAGE=%r, DUST_UG_M3_PER_V=%r).",
+                zero,
+                scale,
+            )
+        return None
 
 def read_sensors(adc, dust_led):
     payload = {
@@ -204,7 +230,7 @@ def send_reading(payload, session):
                 timeout=5,
             )
             response.raise_for_status()
-            logger.info("Reading sent (HTTP %s)", response.status_code)
+            logger.debug("Reading sent (HTTP %s)", response.status_code)
             return True
         except requests.RequestException as error:
             if attempt == 4:
@@ -258,6 +284,7 @@ def main():
         "on" if lcd else "off",
     )
     try:
+        uploaded = 0
         while True:
             started = time.monotonic()
             try:
@@ -266,7 +293,10 @@ def main():
                 if fix:
                     peripherals.apply_gps(payload, fix)
                 if has_measurement(payload):
-                    send_reading(payload, session)
+                    if send_reading(payload, session):
+                        uploaded += 1
+                        if uploaded % 60 == 0:
+                            logger.info("Uploaded %s readings to %s", uploaded, API_URL)
                 else:
                     logger.error("No sensor readings available; nothing was uploaded.")
                 if lcd:

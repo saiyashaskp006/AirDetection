@@ -172,6 +172,12 @@ VITE_API_URL=http://localhost:8000
 VITE_WS_URL=ws://localhost:8000/ws/readings
 ```
 
+Use `localhost` only when the backend runs on the same machine as the browser.
+If the backend runs on the Pi or another computer, put its LAN address here
+(for example `http://pi.local:8000`) and add the browser origin to
+`FRONTEND_ORIGINS`. The frontend also rewrites a loopback URL to the page's
+hostname when you open the Vite server from another device.
+
 Open <http://localhost:5173>. Use **Settings → Demo mode** to generate labeled
 synthetic readings, or **Manual entry** to add a reading yourself.
 
@@ -194,7 +200,7 @@ AEROSENSE_API_KEY=                            # same value as DEVICE_API_KEY, if
 AEROSENSE_SITE_NAME=North campus
 AEROSENSE_LATITUDE=28.6139
 AEROSENSE_LONGITUDE=77.2090
-READ_INTERVAL_SECONDS=5
+SAMPLE_INTERVAL_SECONDS=1  # sample and upload once per second
 
 # Optional, see docs/HARDWARE_WIRING.md
 ADC_BACKEND=arduino        # arduino / ads1115 / ads1015 / mcp3008 / none
@@ -213,9 +219,10 @@ Then run:
 python raspberry_pi.py
 ```
 
-The Pi POSTs to `/api/sensors/readings`; the backend validates the payload,
-writes it to MongoDB, evaluates thresholds, updates sensor status and broadcasts
-the new reading over WebSocket.
+The Pi samples and POSTs to `/api/sensors/readings` once per second; the backend
+validates each payload, writes it to MongoDB, evaluates thresholds, updates
+sensor status, and broadcasts the new reading over WebSocket. At 1 Hz a reading
+is ~300 bytes, far below the Atlas free-tier operation and transfer limits.
 
 ## Mode 1 — Raspberry Pi direct quick start
 
@@ -378,11 +385,12 @@ Database: `airsense` (configurable with `MONGODB_DB`).
 Indexes are created automatically at startup. Optional retention:
 
 ```dotenv
-READING_RETENTION_DAYS=30
+READING_RETENTION_DAYS=7
 ```
 
-This creates a TTL index on `readings.timestamp`. If you later change the value,
-drop the existing `timestamp_ttl` index in Atlas and restart.
+This creates a TTL index on `readings.timestamp`. At 1 Hz, 7 days is roughly
+200 MB, which fits the Atlas free tier. If you later change the value, drop the
+existing `timestamp_ttl` / `timestamp_desc` index in Atlas and restart.
 
 The API writes to MongoDB, but the change stream also accepts readings inserted
 directly into `airsense.readings` by another trusted process. Such documents
@@ -494,11 +502,21 @@ Official references: [WHO Global Air Quality Guidelines (2021)](https://www.who.
 
 ### The dashboard says “Reconnecting” / no live data
 
-- Check `VITE_API_URL` and `VITE_WS_URL`. In direct mode they must point at the
-  Pi's LAN IP, not `localhost` (unless the dashboard runs on the Pi).
-- Allow inbound TCP 8000 on the Pi/backend firewall.
+- Check `VITE_API_URL` and `VITE_WS_URL`. In cloud mode they must point at the
+  computer running the backend (for example `http://192.168.1.100:8000`); in
+  direct mode they point at the Pi. `localhost` only works when the backend
+  runs on the same machine as the browser.
+- Check the Pi's `raspberry_pi/.env`: `AEROSENSE_API_URL` must be the backend
+  machine's LAN IP, not the Pi's own hostname. Start the API with
+  `--host 0.0.0.0` and allow inbound TCP 8000.
 - Confirm the browser origin is in `FRONTEND_ORIGINS`.
-- Open `/api/health` directly in the browser.
+- Open `/api/health` directly in the browser and `curl /api/sensors/latest` on
+  the backend machine. The stale banner on the dashboard also explains whether
+  the WebSocket is down; the dashboard automatically polls the API every 2 s
+  while the socket is unavailable.
+- A 1 Hz stream is about 300 bytes per reading. It will not trigger IP blocking
+  or exceed the Atlas free tier; the only long-running concern is 512 MB of
+  storage, which `READING_RETENTION_DAYS` handles.
 
 ### `MONGODB_URI is empty` or `ServerSelectionTimeoutError`
 
