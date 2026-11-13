@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -57,14 +58,19 @@ async def demo_loop(app: FastAPI) -> None:
 
 async def hardware_loop(app: FastAPI) -> None:
     store = app.state.store
-    try:
-        reader = await asyncio.to_thread(HardwareReader, settings)
-    except Exception:
-        logger.exception(
-            "Direct hardware mode is enabled but the sensors could not be opened. "
-            "Check ADC_BACKEND, I2C/SPI, wiring and the Raspberry Pi packages."
-        )
-        return
+    reader = None
+    while reader is None:
+        try:
+            reader = await asyncio.to_thread(HardwareReader, settings)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception(
+                "Direct hardware mode is enabled but the sensors could not be opened. "
+                "Check ADC_BACKEND, I2C/SPI, wiring and the Raspberry Pi packages. "
+                "Retrying in 10 seconds."
+            )
+            await asyncio.sleep(10)
 
     logger.info(
         "Reading Raspberry Pi sensors every %ss (direct mode).",
@@ -72,6 +78,7 @@ async def hardware_loop(app: FastAPI) -> None:
     )
     try:
         while True:
+            started = time.monotonic()
             try:
                 payload = await asyncio.to_thread(reader.read)
                 if payload:
@@ -86,7 +93,9 @@ async def hardware_loop(app: FastAPI) -> None:
                 raise
             except Exception:
                 logger.exception("Sensor cycle failed.")
-            await asyncio.sleep(settings.hardware_interval_seconds)
+            await asyncio.sleep(
+                max(0.0, settings.hardware_interval_seconds - (time.monotonic() - started))
+            )
     finally:
         await asyncio.to_thread(reader.close)
 

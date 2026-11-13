@@ -248,7 +248,16 @@ class SerialAdc(AnalogSource):
         # Opening the port asserts DTR, which resets most Uno boards.
         time.sleep(max(0.0, boot_seconds))
         self._serial.reset_input_buffer()
-        self._handshake()
+        try:
+            self._handshake()
+        except Exception:
+            # Do not leave the port open if the sketch is missing or the board
+            # is not answering; the caller may retry initialization.
+            try:
+                self._serial.close()
+            except OSError:
+                pass
+            raise
 
     def _handshake(self) -> None:
         for _ in range(5):

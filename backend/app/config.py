@@ -7,8 +7,9 @@ Two deployment presets are supported:
     MongoDB Atlas and pushes changes to browsers over WebSocket.
 
 ``DATA_MODE=direct``
-    This API runs on the Raspberry Pi itself. It reads the sensors in-process,
-    persists to a local file, and serves the dashboard over the LAN.
+    This API runs on the Raspberry Pi itself. It reads the sensors in-process
+    and serves the dashboard. Storage can be a local file or MongoDB Atlas; with
+    Atlas and a tunnel it can also serve the Vercel frontend.
 """
 
 from __future__ import annotations

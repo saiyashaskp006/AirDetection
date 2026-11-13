@@ -36,16 +36,16 @@ component that talks to Atlas. The backend watches the `readings` collection
 with a **change stream**, so it can broadcast readings inserted by any writer —
 including a second backend instance or an optional direct database writer.
 
-### Mode 1 — Raspberry Pi direct (LAN only)
+### Mode 1 — Raspberry Pi direct (LAN, or Vercel via a tunnel)
 
 ```text
 ┌─────────────────────────────────────────────┐
 │ Raspberry Pi                                │
-│  FastAPI backend (file store)               │
+│  FastAPI backend (file store or Atlas)      │
 │  sensor loop: MQ-7, MQ-135, dust, BMP280    │
 │  REST + WebSocket on port 8000              │
 └───────────────────┬─────────────────────────┘
-                    │ WebSocket + REST over the LAN
+                    │ WebSocket + REST
                     ▼
           ┌─────────────────────┐
           │ React dashboard     │
@@ -53,10 +53,11 @@ including a second backend instance or an optional direct database writer.
 ```
 
 A browser cannot listen for WebSocket connections, so in direct mode the Pi
-runs the small FastAPI server and the browser connects to it. Data is persisted
-to `backend/data/airsense.jsonl`, so history survives a restart. No internet or
-MongoDB account is needed. The newest `FILE_MAX_READINGS` samples are kept in
-RAM; the JSONL file itself keeps growing until you archive or delete it.
+runs the FastAPI server and the browser connects to it. Data is persisted to
+`backend/data/airsense.jsonl` by default, so history survives a restart. Set
+`STORAGE_BACKEND=mongodb` to keep history in Atlas instead, which also lets you
+host the dashboard on Vercel and reach the Pi through a tunnel. No internet or
+MongoDB account is needed for the file-store variant.
 
 ## Is MongoDB’s realtime feature free?
 
@@ -101,10 +102,14 @@ AirDetection/
 ├── arduino/
 │   └── air_sensors/
 │       └── air_sensors.ino # Uno ADC bridge sketch
+├── deploy/
+│   ├── aerohub-backend.service # systemd unit for a Pi-hosted backend
+│   └── pi-backend.env.example  # direct mode + Atlas template for the Pi
 ├── docs/
 │   ├── MONGODB_SETUP.md
 │   ├── HARDWARE_WIRING.md
-│   └── ARDUINO_ADC.md
+│   ├── ARDUINO_ADC.md
+│   └── VERCEL_DEPLOY.md    # Vercel frontend + Pi backend + tunnel
 ```
 
 ## Requirements
@@ -561,18 +566,30 @@ Official references: [WHO Global Air Quality Guidelines (2021)](https://www.who.
 
 ## Build and deploy
 
+The frontend is a static Vite build and can be hosted on Vercel. The FastAPI
+backend is a separate long-running process; this deployment uses Vercel only for
+the static frontend. A serverless host is a poor fit for the backend because the
+MongoDB change-stream watcher, sensor loop, and WebSocket all expect a persistent
+process.
+
 ```bash
 cd frontend
 npm run build
 ```
 
-Serve `frontend/dist` from a static host or reverse proxy. Run the backend with a
-production ASGI server:
+For a production deployment with the frontend on Vercel and the backend on the
+Pi, follow [`docs/VERCEL_DEPLOY.md`](docs/VERCEL_DEPLOY.md). In short:
 
-```bash
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+1. Run the backend on the Pi with `DATA_MODE=direct`,
+   `SENSOR_SOURCE=hardware`, `STORAGE_BACKEND=mongodb`, and
+   `HARDWARE_INTERVAL_SECONDS=1`.
+2. Expose it with Tailscale Funnel or Cloudflare Tunnel so the Vercel HTTPS site
+   gets an HTTPS/WSS backend.
+3. Set `VITE_API_URL` and `VITE_WS_URL` in Vercel to the public tunnel URL, and
+   add the Vercel origin to `FRONTEND_ORIGINS` on the Pi.
+4. Install the sample service in
+   [`deploy/aerohub-backend.service`](deploy/aerohub-backend.service) so the Pi
+   backend restarts after a reboot.
 
 For production: use HTTPS/WSS, a restricted CORS list, `DEVICE_API_KEY`, a
 least-privilege MongoDB user, backups, and a process supervisor/systemd unit.

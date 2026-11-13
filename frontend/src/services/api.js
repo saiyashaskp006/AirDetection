@@ -37,9 +37,14 @@ export { API_URL };
 
 export async function api(path, options = {}) {
   const { headers, ...rest } = options;
+  const finalHeaders = { ...headers };
+  // Only send a JSON content type when there is a body. A content type on a
+  // GET turns a simple request into a CORS preflight, which doubles the number
+  // of requests once the dashboard is polling over the internet.
+  if (rest.body != null) finalHeaders["Content-Type"] = "application/json";
   const response = await fetch(`${API_URL}${path}`, {
     ...rest,
-    headers: { "Content-Type": "application/json", ...headers },
+    headers: finalHeaders,
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
