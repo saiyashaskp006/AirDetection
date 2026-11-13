@@ -14,6 +14,9 @@ function MapClick({ onSelect }) {
 
 function MapCamera({ locations }) {
   const map = useMap();
+  const cameraKey = locations
+    .map((site) => `${site.latitude},${site.longitude}`)
+    .join("|");
   useEffect(() => {
     if (locations.length === 1) {
       map.flyTo(position(locations[0].latitude, locations[0].longitude), 12, { duration: 0.6 });
@@ -21,7 +24,8 @@ function MapCamera({ locations }) {
       const bounds = locations.map((site) => position(site.latitude, site.longitude));
       map.fitBounds(bounds, { padding: [30, 30], maxZoom: 12 });
     }
-  }, [locations, map]);
+    // Refit only when the coordinates change, not on every 1 Hz reading.
+  }, [cameraKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return null;
 }
 

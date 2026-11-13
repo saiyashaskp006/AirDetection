@@ -17,9 +17,14 @@ const series = [
 ];
 
 export function TrendChart({ data, compact = false }) {
+  const first = data.length ? new Date(data[0].timestamp).getTime() : 0;
+  const last = data.length ? new Date(data[data.length - 1].timestamp).getTime() : 0;
+  const withSeconds = data.length > 1 ? last - first <= 10 * 60 * 1000 : true;
   const chartData = data.map((item) => ({
     ...item,
-    time: new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    time: new Date(item.timestamp).toLocaleTimeString([], withSeconds
+      ? { hour: "2-digit", minute: "2-digit", second: "2-digit" }
+      : { hour: "2-digit", minute: "2-digit" }),
   }));
   return (
     <div className={compact ? "chart chart-compact" : "chart"}>

@@ -21,8 +21,18 @@ const pages = {
 };
 
 const fmt = (value, digits = 1) => value == null ? null : Number(value).toFixed(digits);
-const stamp = (value) => value ? new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "Waiting for first reading";
+const stamp = (value) => value ? new Date(value).toLocaleString([], { dateStyle: "medium", timeStyle: "medium" }) : "Waiting for first reading";
 const scoreColor = (score) => score >= 80 ? "green" : score >= 60 ? "yellow" : score >= 35 ? "orange" : "red";
+const STALE_AFTER_SECONDS = 15;
+
+function useTicker(intervalMs = 1000) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
+    return () => window.clearInterval(timer);
+  }, [intervalMs]);
+  return now;
+}
 
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash === "#dashboard" ? "overview" : "intro");
@@ -63,8 +73,19 @@ export default function App() {
   }, [live.alerts]);
 
   const title = pages[page];
+  const now = useTicker(1000);
   const lastSeen = latest ? stamp(latest.timestamp) : "No readings received";
   const isDemo = latest?.source === "simulation";
+  const readingAge = latest?.timestamp
+    ? Math.max(0, Math.round((now - new Date(latest.timestamp).getTime()) / 1000))
+    : null;
+  const stale = !latest || readingAge == null || readingAge > STALE_AFTER_SECONDS;
+  const connectionText = live.socketStatus === "connected"
+    ? (stale ? "No live data" : "Live connected")
+    : live.socketStatus === "connecting"
+      ? "Connecting"
+      : stale ? "Reconnecting" : "Polling";
+  const connectionClass = stale ? "stale" : live.socketStatus;
 
   if (page === "intro") return <IntroPage />;
 
@@ -77,11 +98,26 @@ export default function App() {
           <div className="breadcrumb"><span>Workspace</span><span className="crumb-slash">/</span><strong>{title}</strong></div>
           <div className="topbar-right">
             {isDemo && <span className="demo-pill"><span /> DEMO DATA</span>}
-            <span className={`connection-pill ${live.socketStatus}`}><span className="status-pip" />{live.socketStatus === "connected" ? "Live connected" : live.socketStatus === "connecting" ? "Connecting" : "Reconnecting"}</span>
+            <span className={`connection-pill ${connectionClass}`} title={stale ? "The connection is open but no new reading has arrived recently." : "Live readings are arriving."}>
+              <span className="status-pip" />{connectionText}
+            </span>
+            <button className="icon-button" aria-label="Refresh data" title="Refresh data" onClick={() => live.refresh()}><RefreshCw size={17} /></button>
             <button className="avatar" title="Monitoring station">AS</button>
           </div>
         </header>
         <div className="content">
+          {stale && (
+            <div className="stale-banner">
+              <CircleAlert size={17} />
+              <div>
+                <strong>{latest ? `No new readings for ${readingAge}s` : "No readings received yet"}</strong>
+                <span>{live.error || (live.socketStatus === "connected"
+                  ? "The live connection is open but the Raspberry Pi client is not sending data. Check that it is running and that the backend can reach MongoDB."
+                  : "Live updates are reconnecting. The dashboard will also poll the API while the WebSocket is unavailable.")}</span>
+              </div>
+              <button className="text-button" onClick={() => live.refresh()}><RefreshCw size={13} /> Refresh now</button>
+            </div>
+          )}
           {page === "overview" && <Overview latest={latest} data={data} alerts={live.alerts} sensors={live.sensors} lastSeen={lastSeen} setPage={setPage} notify={setToast} />}
           {page === "live" && <LivePage data={data} latest={latest} status={live.socketStatus} />}
           {page === "analytics" && <AnalyticsPage />}
@@ -214,7 +250,7 @@ function Overview({ latest, data, alerts, sensors, lastSeen, setPage, notify }) 
       ...current.filter((item) => item.location_name !== site.location_name
         || item.latitude !== site.latitude || item.longitude !== site.longitude),
     ]);
-  }, [latest?.id]);
+  }, [latest?.latitude, latest?.longitude, latest?.location_name, latest?.source]);
 
   const selectArea = async (latitude, longitude, locationName = "Selected area") => {
     const center = { latitude, longitude, location_name: locationName };
@@ -242,14 +278,18 @@ function Overview({ latest, data, alerts, sensors, lastSeen, setPage, notify }) 
   };
 
   useEffect(() => {
-    if (selectedCenter) selectArea(selectedCenter.latitude, selectedCenter.longitude, selectedCenter.location_name);
-  }, [radiusKm]);
-
-  useEffect(() => {
-    if (selectedCenter && latest?.id) {
-      selectArea(selectedCenter.latitude, selectedCenter.longitude, selectedCenter.location_name);
-    }
-  }, [latest?.id]);
+    if (!selectedCenter) return undefined;
+    const refreshSelectedArea = () => selectArea(
+      selectedCenter.latitude,
+      selectedCenter.longitude,
+      selectedCenter.location_name,
+    );
+    refreshSelectedArea();
+    // The area summary is a 24-hour rollup; refreshing it every second would
+    // add load without useful detail.
+    const timer = window.setInterval(refreshSelectedArea, 15000);
+    return () => window.clearInterval(timer);
+  }, [selectedCenter?.latitude, selectedCenter?.longitude, radiusKm]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>
