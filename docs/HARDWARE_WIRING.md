@@ -373,7 +373,8 @@ add your user to `dialout` once (log out/in afterwards):
 ```bash
 sudo usermod -aG dialout "$USER"
 ls /dev/ttyACM0            # or /dev/ttyUSB0 for CH340 clones
-```
+```sudo usermod -aG dialout "$USER"
+ls /dev/ttyACM0 
 
 For the GPIO UART (Uno on its own power supply), enable the serial hardware and
 disable the serial login console:

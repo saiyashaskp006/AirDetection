@@ -30,9 +30,10 @@ Database credentials stay on the backend and are never sent to the browser.
 Free-tier limits to keep in mind:
 
 - 512 MB total storage. A reading is roughly 250–400 bytes, so a 5-second
-  interval is around 5–7 MB/day. Set `READING_RETENTION_DAYS=30` if you want a
-  predictable ceiling.
-- 100 read/write operations per second.
+  interval is around 5–7 MB/day and a 1-second interval is around 25–35 MB/day.
+  Set `READING_RETENTION_DAYS` (for example 7) if you plan to run continuously.
+- 100 read/write operations per second. One upload per second plus dashboard
+  reads is nowhere near this limit.
 - 10 GB in and 10 GB out per rolling seven days.
 - Idle clusters pause after 30 days without connections; open the Atlas UI to
   resume.
