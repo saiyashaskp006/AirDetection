@@ -376,6 +376,34 @@ The page is HTTPS, so the backend must be `https://` and the socket `wss://`.
 A plain `http://` or `ws://` tunnel URL will be blocked. Both Tailscale Funnel
 and Cloudflare Tunnel provide HTTPS/WSS.
 
+### `systemctl status` says `status=203/EXEC`
+
+`203/EXEC` means systemd could not execute the `ExecStart` command. Check the
+path in the installed unit:
+
+```bash
+sudo systemctl cat aerohub-backend
+ls -l /home/pi/AirDetection/backend/.venv/bin/python
+```
+
+If the unit shows `/root/AirDetection/...`, it is running as root or `%h`
+expanded to `/root`. Do not copy the repo to `/root`; set `User=pi` and use
+absolute paths in the unit:
+
+```ini
+User=pi
+WorkingDirectory=/home/pi/AirDetection/backend
+ExecStart=/home/pi/AirDetection/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Then:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart aerohub-backend
+sudo systemctl status aerohub-backend --no-pager
+```
+
 ### Tunnel returns 502 / 404
 
 - Is `systemctl status aerohub-backend` running?

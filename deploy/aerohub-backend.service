@@ -5,13 +5,14 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Change this if your Pi user is not "pi".
+# Change User and the three paths below if your Pi user or repo location differs.
 User=pi
-WorkingDirectory=%h/AirDetection/backend
+Group=pi
+WorkingDirectory=/home/pi/AirDetection/backend
 Environment=PYTHONUNBUFFERED=1
 # 127.0.0.1 is enough when Tailscale Funnel or Cloudflare Tunnel runs on the
 # same Pi. Use --host 0.0.0.0 only if you also want direct LAN access.
-ExecStart=%h/AirDetection/backend/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/home/pi/AirDetection/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 Restart=always
 RestartSec=5
 TimeoutStopSec=20
