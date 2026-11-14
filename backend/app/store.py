@@ -22,7 +22,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator
 
-from app.defaults import DEFAULT_THRESHOLDS
+from app.defaults import DEFAULT_THRESHOLDS, LEGACY_MQ135_THRESHOLDS
+from app.estimates import derived_estimates
 from app.timeutil import as_utc, utc_now
 
 logger = logging.getLogger("aerohub.store")
@@ -198,6 +199,17 @@ class MemoryStore(Store):
         return None
 
     async def ensure_ready(self) -> None:
+        old_warning, old_critical = LEGACY_MQ135_THRESHOLDS
+        current_mq135 = self.threshold_rows.get("mq135")
+        if current_mq135 and (
+            current_mq135.get("warning_threshold") == old_warning
+            and current_mq135.get("critical_threshold") == old_critical
+        ):
+            self.threshold_rows["mq135"] = {
+                "warning_threshold": DEFAULT_THRESHOLDS["mq135"][0],
+                "critical_threshold": DEFAULT_THRESHOLDS["mq135"][1],
+            }
+            self._append("threshold", {"sensor_name": "mq135", **self.threshold_rows["mq135"]})
         for name, (warning, critical) in DEFAULT_THRESHOLDS.items():
             if name not in self.threshold_rows:
                 self.threshold_rows[name] = {
@@ -330,7 +342,7 @@ class MemoryStore(Store):
 
         start, end = as_utc(start), as_utc(end)
         rows = [
-            row
+            derived_estimates(row)
             for row in self.readings
             if (start is None or (row.get("timestamp") and row["timestamp"] >= start))
             and (end is None or (row.get("timestamp") and row["timestamp"] <= end))
@@ -559,6 +571,89 @@ class MongoStore(Store):
                 },
                 upsert=True,
             )
+
+        # Older versions used raw volts for the MQ-135 alert threshold. Convert
+        # only the exact old defaults, leaving a user's custom value untouched.
+        old_warning, old_critical = LEGACY_MQ135_THRESHOLDS
+        await self.thresholds_collection.update_one(
+            {
+                "_id": "mq135",
+                "warning_threshold": old_warning,
+                "critical_threshold": old_critical,
+            },
+            {
+                "$set": {
+                    "warning_threshold": DEFAULT_THRESHOLDS["mq135"][0],
+                    "critical_threshold": DEFAULT_THRESHOLDS["mq135"][1],
+                }
+            },
+        )
+
+        await self._backfill_estimates()
+
+    async def _backfill_estimates(self) -> None:
+        """Add ppm/dust estimates to old rows that only have raw voltages.
+
+        This is a one-time migration guarded by a settings flag. It makes the
+        statistics endpoint and long-range charts useful for data recorded
+        before the estimate fields existed. Failure is non-fatal: the API still
+        works and will retry on the next startup.
+        """
+        flag = "derived_estimates_backfill_v1"
+        try:
+            if await self.get_setting(flag, False):
+                return
+        except Exception as exc:
+            logger.warning("Could not read the estimate backfill flag: %s", exc)
+            return
+
+        from pymongo import UpdateOne
+
+        query = {
+            "$or": [
+                {
+                    "mq135_raw": {"$exists": True, "$ne": None},
+                    "mq135_estimated_ppm": None,
+                },
+                {
+                    "dust_voltage": {"$exists": True, "$ne": None},
+                    "dust_ug_m3": None,
+                },
+            ]
+        }
+        projection = {
+            "mq135_raw": 1,
+            "mq135_estimated_ppm": 1,
+            "dust_voltage": 1,
+            "dust_ug_m3": 1,
+        }
+        operations = []
+        updated = 0
+        try:
+            async for row in self.readings.find(query, projection):
+                derived = derived_estimates(row)
+                changes = {}
+                if (
+                    row.get("mq135_estimated_ppm") is None
+                    and derived.get("mq135_estimated_ppm") is not None
+                ):
+                    changes["mq135_estimated_ppm"] = derived["mq135_estimated_ppm"]
+                if row.get("dust_ug_m3") is None and derived.get("dust_ug_m3") is not None:
+                    changes["dust_ug_m3"] = derived["dust_ug_m3"]
+                if changes:
+                    operations.append(UpdateOne({"_id": row["_id"]}, {"$set": changes}))
+                if len(operations) >= 500:
+                    await self.readings.bulk_write(operations, ordered=False)
+                    updated += len(operations)
+                    operations.clear()
+            if operations:
+                await self.readings.bulk_write(operations, ordered=False)
+                updated += len(operations)
+            await self.set_setting(flag, True)
+            if updated:
+                logger.info("Backfilled ppm/dust estimates for %s old readings", updated)
+        except Exception as exc:
+            logger.warning("Could not backfill old ppm/dust estimates: %s", exc)
 
     async def health(self) -> dict[str, Any]:
         await self.client.admin.command("ping")

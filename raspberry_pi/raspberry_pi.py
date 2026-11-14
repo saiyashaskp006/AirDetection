@@ -52,6 +52,27 @@ DUST_DIVIDER_RATIO = max(1.0, float(os.getenv("DUST_DIVIDER_RATIO", _LEGACY_DIVI
 LOAD_RESISTOR_KOHM = float(os.getenv("MQ_LOAD_RESISTOR_KOHM", "10"))
 HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 
+# Fallback datasheet fits when no reference calibration is supplied. These are
+# estimates, not laboratory measurements; overwrite the matching *_R0_KOHM and
+# *_CURVE_* variables after calibrating against a known gas concentration.
+GAS_CALIBRATION_DEFAULTS = {
+    "MQ7": (10.0, -1.5625, 2.009386),       # 19.32 * (Rs/R0)^-0.64
+    "MQ135": (76.63, -0.361141, 0.746373),  # 116.602 * (Rs/R0)^-2.769
+}
+DUST_ZERO_VOLTAGE_DEFAULT = 0.9
+DUST_UG_M3_PER_V_DEFAULT = 200.0
+_dust_low_warned = False
+
+
+def _env_float(name, default):
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
 
 def sensor_voltage(adc, channel, ratio=None):
     """Voltage at the sensor output, undoing an external resistor divider."""
@@ -59,17 +80,27 @@ def sensor_voltage(adc, channel, ratio=None):
 
 
 def gas_ppm(voltage, sensor_prefix):
-    """Return a concentration only when the sensor curve has been calibrated."""
-    r0 = os.getenv(f"{sensor_prefix}_R0_KOHM")
-    slope = os.getenv(f"{sensor_prefix}_CURVE_SLOPE")
-    intercept = os.getenv(f"{sensor_prefix}_CURVE_INTERCEPT")
-    if voltage <= 0 or not r0 or not slope or not intercept:
+    """Estimate ppm from the MQ sensor's log-log curve.
+
+    A configured calibration (R0 + slope + intercept) takes precedence. When
+    those values are blank, an approximate datasheet fit is used so the
+    dashboard still shows a meaningful concentration.
+    """
+    default_r0, default_slope, default_intercept = GAS_CALIBRATION_DEFAULTS[sensor_prefix]
+    r0 = _env_float(f"{sensor_prefix}_R0_KOHM", default_r0)
+    slope = _env_float(f"{sensor_prefix}_CURVE_SLOPE", default_slope)
+    intercept = _env_float(f"{sensor_prefix}_CURVE_INTERCEPT", default_intercept)
+    if voltage <= 0 or r0 <= 0 or slope == 0:
         return None
     resistance = LOAD_RESISTOR_KOHM * (MQ_SUPPLY_VOLTAGE / voltage - 1)
-    if resistance <= 0 or float(r0) <= 0:
+    if resistance <= 0:
         return None
-    log_ppm = (math.log10(resistance / float(r0)) - float(intercept)) / float(slope)
-    return round(10**log_ppm, 2)
+    log_ppm = (math.log10(resistance / r0) - intercept) / slope
+    ppm = 10**log_ppm
+    if not math.isfinite(ppm) or ppm < 0:
+        return None
+    limit = 10000.0 if sensor_prefix == "MQ7" else 100000.0
+    return round(min(ppm, limit), 2)
 
 
 def read_bmp280():
@@ -165,33 +196,23 @@ def read_dust_voltage(adc, led):
         return None
 
 
-_dust_calibration_warned = False
-
-
 def calibrated_dust_estimate(voltage):
-    """Optional linear calibration: estimate = (volts - zero) * configured scale.
+    """Estimate ug/m3 from the Sharp sensor's linear output.
 
-    Blank or invalid values disable the estimate; they must never stop a
-    reading from being uploaded.
+    The defaults match the GP2Y1010AU0F datasheet (~0.9 V at zero dust and
+    ~0.005 V per ug/m3). DUST_ZERO_VOLTAGE and DUST_UG_M3_PER_V override them
+    with values from a reference instrument. Invalid values fall back to the
+    defaults so they can never stop a reading from being uploaded.
     """
-    global _dust_calibration_warned
-    zero = (os.getenv("DUST_ZERO_VOLTAGE") or "").strip()
-    scale = (os.getenv("DUST_UG_M3_PER_V") or "").strip()
-    if voltage is None or not zero or not scale:
+    zero = _env_float("DUST_ZERO_VOLTAGE", DUST_ZERO_VOLTAGE_DEFAULT)
+    scale = _env_float("DUST_UG_M3_PER_V", DUST_UG_M3_PER_V_DEFAULT)
+    if voltage is None:
         return None
-    try:
-        return round(max(0, (voltage - float(zero)) * float(scale)), 2)
-    except ValueError:
-        if not _dust_calibration_warned:
-            _dust_calibration_warned = True
-            logger.warning(
-                "Ignoring invalid dust calibration (DUST_ZERO_VOLTAGE=%r, DUST_UG_M3_PER_V=%r).",
-                zero,
-                scale,
-            )
-        return None
+    return round(max(0.0, (voltage - zero) * scale), 2)
+
 
 def read_sensors(adc, dust_led):
+    global _dust_low_warned
     payload = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "source": "raspberry_pi",
@@ -213,6 +234,15 @@ def read_sensors(adc, dust_led):
 
     dust_voltage = read_dust_voltage(adc, dust_led) if adc is not None else None
     if dust_voltage is not None:
+        if dust_voltage < 0.5 and not _dust_low_warned:
+            _dust_low_warned = True
+            logger.warning(
+                "Dust output is %.3f V; a working GP2Y1010AU0F should be about "
+                "0.9 V with the LED on. Check the D7 transistor/LED polarity "
+                "(ARDUINO_DUST_LED_ACTIVE_HIGH), the 150 ohm LED resistor and "
+                "common ground.",
+                dust_voltage,
+            )
         payload["dust_voltage"] = dust_voltage
         payload["dust_ug_m3"] = calibrated_dust_estimate(dust_voltage)
     # Omit unavailable or uncalibrated values rather than uploading false zeroes.
@@ -245,7 +275,15 @@ def send_reading(payload, session):
 def has_measurement(payload):
     return any(
         payload.get(key) is not None
-        for key in ("temperature", "pressure", "co_ppm", "mq135_raw", "dust_voltage", "dust_ug_m3")
+        for key in (
+            "temperature",
+            "pressure",
+            "co_ppm",
+            "mq135_raw",
+            "mq135_estimated_ppm",
+            "dust_voltage",
+            "dust_ug_m3",
+        )
     )
 
 

@@ -201,10 +201,13 @@ class SerialAdc(AnalogSource):
     * ``I``    -> ``AEROHUB,1``  (firmware identity, used as a handshake)
     * ``R<n>`` -> ``V,<raw>``    (``analogRead`` on A<n>)
     * ``D``    -> ``D,<raw>``    (pulse the dust LED and sample it)
+    * ``L0/L1`` -> ``L,0/L,1``  (set dust LED active-low / active-high)
 
     ``MQ7_ADC_CHANNEL``, ``MQ135_ADC_CHANNEL`` and ``DUST_ADC_CHANNEL`` select
     the Arduino pin (A0 = 0 ... A5 = 5). The Uno's ADC is 5 V tolerant, so the
-    MQ outputs can connect directly when this backend is used.
+    MQ outputs can connect directly when this backend is used. The dust LED
+    polarity is sent to the sketch at startup from
+    ``ARDUINO_DUST_LED_ACTIVE_HIGH``; the sketch must include the L command.
 
     ``ARDUINO_PORT`` is ``/dev/ttyACM0`` (USB, official Uno), ``/dev/ttyUSB0``
     (CH340 clone), or ``/dev/serial0`` for the Pi's GPIO UART when the Uno has
@@ -224,6 +227,7 @@ class SerialAdc(AnalogSource):
         timeout: float = 0.5,
         boot_seconds: float = 2.0,
         dust_led: bool = True,
+        dust_led_active_high: bool = True,
     ) -> None:
         try:
             import serial
@@ -237,6 +241,7 @@ class SerialAdc(AnalogSource):
         self.vref = vref
         self.adc_max = adc_max
         self.supports_dust = dust_led
+        self.dust_led_active_high = dust_led_active_high
         try:
             self._serial = serial.Serial(port, baud, timeout=timeout)
         except serial.SerialException as exc:
@@ -250,6 +255,8 @@ class SerialAdc(AnalogSource):
         self._serial.reset_input_buffer()
         try:
             self._handshake()
+            if self.supports_dust:
+                self._set_dust_led_polarity()
         except Exception:
             # Do not leave the port open if the sketch is missing or the board
             # is not answering; the caller may retry initialization.
@@ -270,6 +277,20 @@ class SerialAdc(AnalogSource):
             "that the port is /dev/ttyACM0 (official Uno) or /dev/ttyUSB0 (CH340 "
             "clone), and that your user is in the 'dialout' group."
         )
+
+    def _set_dust_led_polarity(self) -> None:
+        """Tell the sketch whether the dust LED driver is active-high or low.
+
+        Older sketches answer ``ERR,command`` and keep their compile-time
+        setting; this is harmless. Reflash arduino/air_sensors/air_sensors.ino
+        to use ARDUINO_DUST_LED_ACTIVE_HIGH from the environment.
+        """
+        self._serial.reset_input_buffer()
+        self._serial.write(f"L{1 if self.dust_led_active_high else 0}\n".encode("ascii"))
+        try:
+            self._serial.readline()
+        except (OSError, RuntimeError):
+            pass
 
     def _query(self, command: str) -> str:
         self._serial.reset_input_buffer()
@@ -353,6 +374,7 @@ def create_adc() -> AnalogSource | None:
             timeout=_env_float("ARDUINO_TIMEOUT", 0.5),
             boot_seconds=_env_float("ARDUINO_BOOT_SECONDS", 2.0),
             dust_led=_env_bool("ARDUINO_DUST_LED", True),
+            dust_led_active_high=_env_bool("ARDUINO_DUST_LED_ACTIVE_HIGH", True),
         )
 
     raise ValueError(

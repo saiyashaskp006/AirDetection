@@ -60,6 +60,8 @@ ARDUINO_BOOT_SECONDS=2.0       # 0 for the GPIO UART
 ARDUINO_VREF=5.0
 ARDUINO_ADC_MAX=1023
 ARDUINO_DUST_LED=true
+# true = NPN low-side/active-high, false = PNP high-side/active-low.
+ARDUINO_DUST_LED_ACTIVE_HIGH=true
 MQ_DIVIDER_RATIO=1
 ```
 
@@ -203,7 +205,11 @@ the board:
 
 With `ADC_BACKEND=arduino` and `ARDUINO_DUST_LED=true`, the Uno pulses the LED
 for 280 µs and samples `A2` itself, then sends the result over serial. That is
-the most accurate option because USB latency never stretches the pulse.
+the most accurate option because USB latency never stretches the pulse. The
+current sketch also accepts `ARDUINO_DUST_LED_ACTIVE_HIGH` from the Pi
+(`true` for an NPN low-side driver, `false` for PNP high-side/active-low). If
+the raw dust voltage is stuck near zero, verify LED polarity, the 150 Ω series
+resistor and the transistor; a working sensor reads about 0.9 V with the LED on.
 
 Otherwise the Pi pulses the LED, waits 0.28 ms, reads the ADC, then waits
 ~9.7 ms.
@@ -214,18 +220,19 @@ Otherwise the Pi pulses the LED, waits 0.28 ms, reads the ADC, then waits
 > values as approximate. The MCP3008 and Arduino honour the original timing
 > much more closely.
 
-Two possible LED circuits, selected by `DUST_LED_ACTIVE_HIGH` (the Arduino
-sketch has its own `DUST_LED_ACTIVE_HIGH` constant at the top):
+Two possible LED circuits:
 
 - **Transistor (recommended).** Arduino `D7`/GPIO17 → 1 kΩ → NPN base,
-  emitter → GND, collector → LED cathode, LED anode → 150 Ω → 5 V. Set
-  `DUST_LED_ACTIVE_HIGH=true` (sketch: `true`).
-- **Direct sink.** 5 V → 150 Ω → LED anode, LED cathode → GPIO17. Set
-  `DUST_LED_ACTIVE_HIGH=false` (default). This sinks ~20 mA, above the 16 mA
-  recommended maximum.
+  emitter → GND, collector → LED cathode, LED anode → 150 Ω → 5 V. With the
+  Arduino driving it, set `ARDUINO_DUST_LED_ACTIVE_HIGH=true`. If the Pi drives
+  GPIO17 instead, set `DUST_LED_ACTIVE_HIGH=true`.
+- **Direct sink.** 5 V → 150 Ω → LED anode, LED cathode → GPIO17. Set the
+  matching `*_ACTIVE_HIGH` variable to `false` (default). This sinks ~20 mA,
+  above the 16 mA recommended maximum.
 
-If dust reads a constant value, try flipping `DUST_LED_ACTIVE_HIGH`; if the
-polarity is wrong the LED never emits and the output stays flat.
+If dust reads a constant value, try flipping the polarity (`L0`/`L1` in the
+serial test). If the polarity is wrong the LED never emits and the output stays
+flat near 0 V.
 
 ## BMP280 / HW-611
 
@@ -492,8 +499,35 @@ EOF
 | `GPS disabled: GPS_HOST is required` | `GPS_MODE=tcp` without `GPS_HOST` |
 | GPS page stays `GPS waiting` | app not streaming, wrong IP/port, phone and Pi on different networks |
 | GPS fix but no map marker | `location_name` blank and no `GPS_LOCATION_NAME` |
-| CO/AQ `n/a` | calibration values (`MQ7_*`, `MQ135_*`) are intentionally blank |
-| Dust `n/a` | `DUST_ZERO_VOLTAGE` / `DUST_UG_M3_PER_V` not calibrated |
+| CO/AQ `n/a` | MQ AOUT is 0 V or the ADC channel is unpowered; check AOUT, ground and the channel number |
+| Dust always 0 µg/m³ | Dust voltage is at/below the 0.9 V zero point; check LED polarity, D7 transistor, 150 Ω resistor and common ground |
+| Dust `n/a` | The Arduino is not answering the `D` command; reflash the current `air_sensors.ino` and check the serial test below |
 
-Estimated concentrations are only reported after calibration; the backend omits
-them rather than publishing false zeroes.
+The backend now uses approximate datasheet curves when calibration is blank, so
+a working sensor should show a number. A dust reading stuck at 0 usually means
+the LED is not pulsing, not that calibration is missing.
+
+### Quick dust serial test (Arduino backend)
+
+Stop the backend first so only this test owns `/dev/serial0`:
+
+```bash
+sudo systemctl stop aerohub-backend
+python3 - <<'PY'
+import serial, time
+s = serial.Serial('/dev/serial0', 115200, timeout=1)
+time.sleep(0.2)
+for cmd in ('I', 'L1', 'D', 'D', 'R2', 'L0', 'D'):
+    s.write((cmd + '\n').encode())
+    time.sleep(0.15)
+    print(cmd, repr(s.readline()))
+s.close()
+PY
+sudo systemctl start aerohub-backend
+```
+
+Expected: `I` prints `AEROHUB,1`, `L1`/`L0` print `L,1`/`L,0`, and `D` prints
+`D,<raw>`. With the LED pulsing, `D` should be roughly 180–200 counts (~0.9 V) in
+clean air and higher in dust. If `D` stays near 0 while `R2` is around 180, the
+LED drive/polarity is wrong; try the other `L` value. If `D` gets no reply,
+reflash the current sketch.

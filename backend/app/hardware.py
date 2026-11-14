@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import importlib.util
 import logging
-import math
 import os
 import time
 from contextlib import suppress
@@ -16,6 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import Settings
+from app.estimates import dust_ug_m3, gas_ppm
 
 logger = logging.getLogger("aerohub.hardware")
 
@@ -101,6 +101,7 @@ class HardwareReader:
         self.adc = adc_backend.create_adc()
 
         self.dust_led = None
+        self._dust_low_warned = False
         if self.adc is not None and not getattr(self.adc, "supports_dust", False):
             try:
                 from gpiozero import DigitalOutputDevice
@@ -167,16 +168,12 @@ class HardwareReader:
         return self._analog_voltage(channel) * (ratio or self.mq_divider)
 
     def _gas_ppm(self, voltage: float, prefix: str) -> float | None:
-        r0 = _env_float(f"{prefix}_R0_KOHM")
-        slope = _env_float(f"{prefix}_CURVE_SLOPE")
-        intercept = _env_float(f"{prefix}_CURVE_INTERCEPT")
-        if voltage <= 0 or not r0 or not slope or intercept is None or r0 <= 0:
-            return None
-        resistance = self.load_resistor_kohm * (self.supply_voltage / voltage - 1)
-        if resistance <= 0:
-            return None
-        log_ppm = (math.log10(resistance / r0) - intercept) / slope
-        return round(10**log_ppm, 2)
+        return gas_ppm(
+            voltage,
+            prefix,
+            supply_voltage=self.supply_voltage,
+            load_resistor_kohm=self.load_resistor_kohm,
+        )
 
     def _read_bmp280(self) -> dict:
         if self.bmp is None:
@@ -217,11 +214,10 @@ class HardwareReader:
             return None
 
     def _calibrated_dust(self, voltage: float | None) -> float | None:
-        zero = _env_float("DUST_ZERO_VOLTAGE")
-        scale = _env_float("DUST_UG_M3_PER_V")
-        if voltage is None or zero is None or scale is None:
-            return None
-        return round(max(0, (voltage - zero) * scale), 2)
+        # GP2Y1010AU0F datasheet: ~0.9 V at zero dust, ~0.005 V per ug/m3
+        # (200 ug/m3 per volt). Users can override these with a reference
+        # meter. A non-zero output below 0.9 V is clamped to zero.
+        return dust_ug_m3(voltage)
 
     def read(self) -> dict:
         location = self.settings.device_location
@@ -249,6 +245,15 @@ class HardwareReader:
 
         dust_voltage = self._read_dust_voltage()
         if dust_voltage is not None:
+            if dust_voltage < 0.5 and not self._dust_low_warned:
+                self._dust_low_warned = True
+                logger.warning(
+                    "Dust output is %.3f V; a working GP2Y1010AU0F should be about "
+                    "0.9 V with the LED on. Check the D7 transistor/LED polarity "
+                    "(ARDUINO_DUST_LED_ACTIVE_HIGH), the 150 ohm LED resistor and "
+                    "common ground.",
+                    dust_voltage,
+                )
             payload["dust_voltage"] = dust_voltage
             payload["dust_ug_m3"] = self._calibrated_dust(dust_voltage)
 

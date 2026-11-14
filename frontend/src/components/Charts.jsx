@@ -12,7 +12,7 @@ import {
 const series = [
   { key: "temperature", label: "Temperature", color: "#59d9ae", unit: "°C" },
   { key: "co_ppm", label: "CO", color: "#58b8ff", unit: " ppm" },
-  { key: "mq135_raw", label: "MQ-135", color: "#b69aff", unit: " V" },
+  { key: "mq135_estimated_ppm", label: "MQ-135 est.", color: "#b69aff", unit: " ppm" },
   { key: "dust_ug_m3", label: "Dust", color: "#f6bd60", unit: " µg/m³" },
 ];
 

@@ -10,8 +10,13 @@ modes with the same React frontend and the same FastAPI REST/WebSocket API:
 
 > **Measurement note:** the “Project air-quality score” is a project indicator,
 > not a regulatory AQI or health assessment. MQ-7/MQ-135 and optical dust sensors
-> require warm-up, reference measurements and calibration. Uncalibrated
-> concentrations are never invented by the Pi client.
+> require warm-up, reference measurements and calibration. When no calibration
+> is configured, the app uses approximate datasheet curves so it can show ppm
+> and µg/m³ instead of raw voltage. Those values are **estimates**; calibrate
+> against a known gas/reference meter before treating them as measurements.
+> Old Atlas rows that only contain raw MQ-135/dust volts are backfilled with
+> estimates on the first backend start. Historical MQ-7/CO cannot be recovered
+> because the old client never stored the raw MQ-7 voltage.
 
 ## Architecture
 
@@ -213,6 +218,8 @@ ARDUINO_PORT=/dev/serial0  # GPIO UART; /dev/ttyACM0 for USB
 ARDUINO_BOOT_SECONDS=0     # 2.0 for USB (the Uno resets on open)
 ARDUINO_VREF=5.0
 ARDUINO_DUST_LED=true
+# true = NPN low-side/active-high, false = PNP high-side/active-low
+ARDUINO_DUST_LED_ACTIVE_HIGH=true
 GPS_ENABLED=false
 LCD_ENABLED=false
 BMP280_I2C_ADDRESS=0x77
@@ -257,7 +264,7 @@ the dashboard on the LAN.
    DEVICE_LOCATION_NAME=North campus
    DEVICE_LATITUDE=28.6139
    DEVICE_LONGITUDE=77.2090
-   FRONTEND_ORIGINS=http://localhost:5173,http://192.168.1.50:8000
+   FRONTEND_ORIGINS=http://localhost:5173,http://192.168.1.50:5173
 
    # Optional, see docs/HARDWARE_WIRING.md
    ADC_BACKEND=arduino        # arduino / ads1115 / ads1015 / mcp3008 / none
@@ -265,6 +272,8 @@ the dashboard on the LAN.
    ARDUINO_BOOT_SECONDS=0     # 2.0 for USB (the Uno resets on open)
    ARDUINO_VREF=5.0
    ARDUINO_DUST_LED=true
+   # true = NPN low-side/active-high, false = PNP high-side/active-low
+   ARDUINO_DUST_LED_ACTIVE_HIGH=true
    BMP280_I2C_ADDRESS=0x77
    GPS_ENABLED=false
    LCD_ENABLED=false
@@ -432,9 +441,10 @@ Summary:
   `AGND`/`DGND` → GND, `CLK` → pin 23, `DOUT` → pin 21, `DIN` → pin 19,
   `CS/SHDN` → pin 24, then set `ADC_BACKEND=mcp3008`.
 - Sharp dust `Vo` → `A2` on whichever ADC; with the Arduino, set
-  `ARDUINO_DUST_LED=true` and let it drive `D7` (datasheet-accurate timing). If
-  the Pi drives the LED instead, set `DUST_LED_ACTIVE_HIGH=true` for an NPN
-  transistor.
+  `ARDUINO_DUST_LED=true` and let it drive `D7` (datasheet-accurate timing).
+  Set `ARDUINO_DUST_LED_ACTIVE_HIGH=true` for an NPN low-side driver or
+  `false` for PNP high-side/active-low wiring. If the Pi drives the LED
+  instead, use `DUST_LED_ACTIVE_HIGH`.
 - BMP280 → 3.3 V, GND, SDA (pin 3), SCL (pin 5). HW-611 boards answer on
   `0x76` or `0x77`; set `BMP280_I2C_ADDRESS` to what `i2cdetect -y 1` shows.
 
@@ -460,14 +470,16 @@ Both are disabled by default and local to the Pi (they work in either mode).
 
 ### Calibration
 
-The client sends raw MQ-135 volts and only reports CO ppm, estimated MQ-135 ppm
-or dust µg/m³ when calibration values are configured. For each MQ sensor,
-determine its actual load resistance, burn-in/warm-up and clean-air baseline;
-derive and validate an `Rs/R0` curve against known reference concentrations.
-Set `{MQ7|MQ135}_R0_KOHM`, `{MQ7|MQ135}_CURVE_SLOPE` and
+The client and direct backend use approximate datasheet curves when calibration
+values are blank, so the dashboard shows estimated CO ppm, MQ-135 ppm and dust
+µg/m³ instead of raw voltages. These are **not reference measurements**. For
+each MQ sensor, determine its actual load resistance, burn-in/warm-up and
+clean-air baseline; derive and validate an `Rs/R0` curve against known reference
+concentrations. Set `{MQ7|MQ135}_R0_KOHM`, `{MQ7|MQ135}_CURVE_SLOPE` and
 `{MQ7|MQ135}_CURVE_INTERCEPT` from that calibration. Derive and verify
-`DUST_ZERO_VOLTAGE` and `DUST_UG_M3_PER_V` against a reference instrument before
-enabling dust estimates. Keep them blank otherwise.
+`DUST_ZERO_VOLTAGE` and `DUST_UG_M3_PER_V` against a reference instrument. Use
+the defaults only for trends and demonstrations, not for compliance or health
+decisions.
 
 ## WHO, CPCB and WMO interpretation
 

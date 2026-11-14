@@ -111,7 +111,10 @@ DEVICE_LATITUDE=28.6139
 DEVICE_LONGITUDE=77.2090
 
 # The browser origin is the Vercel site, not the tunnel URL.
+# Add http://localhost:5173 if you also run the Vite dev server.
 FRONTEND_ORIGINS=https://your-project.vercel.app
+# Optional: allow every Vercel preview URL in addition to production.
+# FRONTEND_ORIGIN_REGEX=https://.*\.vercel\.app$
 
 # Hardware settings, same values as the old raspberry_pi/.env. The backend
 # loads only backend/.env; it does not read raspberry_pi/.env.
@@ -122,14 +125,21 @@ ARDUINO_BOOT_SECONDS=0
 ARDUINO_VREF=5.0
 ARDUINO_ADC_MAX=1023
 ARDUINO_DUST_LED=true
+# true = NPN low-side/active-high, false = PNP high-side/active-low.
+# The Pi sends this to the current Arduino sketch with L0/L1 at startup.
+ARDUINO_DUST_LED_ACTIVE_HIGH=true
 MQ_DIVIDER_RATIO=1
 DUST_DIVIDER_RATIO=1
 BMP280_I2C_ADDRESS=0x77
 GPS_ENABLED=false
 LCD_ENABLED=false
 
-# Optional calibration, same names as raspberry_pi/.env. Leave blank until you
-# have real reference values; raw voltages still upload.
+# Optional calibration overrides. Blank values use approximate built-in curves:
+#   MQ-7   19.32 * (Rs/R0)^-0.64
+#   MQ-135 116.602 * (Rs/R0)^-2.769
+#   Dust   (Vo - 0.9 V) * 200 ug/m3 per V
+# Values are estimates, not reference measurements. Replace them after
+# calibrating against a known gas concentration or dust meter.
 MQ7_R0_KOHM=
 MQ7_CURVE_SLOPE=
 MQ7_CURVE_INTERCEPT=
@@ -317,11 +327,16 @@ If the tunnel URL is unreachable, the Vercel frontend cannot show history —
 Vercel only serves static files. The backend must be running somewhere.
 
 At 1 Hz, the raw history endpoint returns at most 50,000 rows, which is about
-14 hours. The 1-hour chart is complete; the 24-hour and 7-day line charts show
-the newest 50,000 rows, while the statistics cards cover the full selected
-period. If you need full-range 24-hour/7-day line charts at 1 Hz, add
-server-side downsampling (one averaged point per bucket) instead of raising the
-limit.
+14 hours. The frontend therefore asks for `max_points=1200` (Live) or
+`max_points=1500` (Analytics), and the API evenly downsamples the result before
+sending it. This keeps chart responses small over a mobile/Tailscale link. The
+statistics cards still cover the full selected period, but the CSV export uses
+the downsampled rows shown in the chart.
+
+Rows written before the ppm/dust estimate fields existed are backfilled from
+`mq135_raw` and `dust_voltage` once, on the first backend start. MQ-7/CO history
+from that era cannot be reconstructed because the raw MQ-7 voltage was never
+stored; only new readings carry `co_ppm`.
 
 ## Why history disappeared when the laptop was off
 
@@ -363,6 +378,29 @@ FRONTEND_ORIGINS=https://aerohub.vercel.app
 
 For temporary Vercel preview URLs, add each preview origin, or use
 `FRONTEND_ORIGINS=*` only for a short test. Restart the backend after editing.
+
+The WebSocket is not subject to CORS, so the dashboard can look live while every
+REST request (history, alerts, statistics) fails with **Failed to fetch**. Test
+the REST request with the exact browser origin:
+
+```bash
+curl -i -H 'Origin: https://your-project.vercel.app' \
+  'https://raspberrypi.tailXXXX.ts.net/api/sensors/history?limit=1'
+```
+
+The response must include:
+
+```text
+access-control-allow-origin: https://your-project.vercel.app
+```
+
+If that header is missing, fix `FRONTEND_ORIGINS` and restart the backend. To
+allow Vercel preview deployments without listing every URL:
+
+```dotenv
+FRONTEND_ORIGINS=https://your-project.vercel.app
+FRONTEND_ORIGIN_REGEX=https://.*\.vercel\.app$
+```
 
 ### Vercel loads but every request goes to `localhost`
 

@@ -95,16 +95,27 @@ async def sensor_area(
     return await assess_area(store, latitude, longitude, radius_km)
 
 
+def _downsample(rows: list[dict], max_points: int | None) -> list[dict]:
+    """Return evenly spaced rows for charts without changing statistics."""
+    if not max_points or len(rows) <= max_points:
+        return rows
+    if max_points == 1:
+        return [rows[-1]]
+    step = (len(rows) - 1) / (max_points - 1)
+    return [rows[round(index * step)] for index in range(max_points)]
+
+
 @router.get("/sensors/history")
 async def reading_history(
     start: datetime | None = None,
     end: datetime | None = None,
     limit: int = Query(default=1000, ge=1, le=50000),
+    max_points: int | None = Query(default=None, ge=1, le=50000),
     source: str | None = None,
     store: Store = Depends(get_store),
 ):
     rows = await store.list_readings(start=start, end=end, limit=limit, source=source)
-    return [reading_payload(row) for row in rows]
+    return [reading_payload(row) for row in _downsample(rows, max_points)]
 
 
 @router.get("/sensors/statistics")

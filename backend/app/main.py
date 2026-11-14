@@ -35,6 +35,11 @@ logging.basicConfig(
 logger = logging.getLogger("aerohub")
 
 settings = get_settings()
+logger.info(
+    "CORS allowed origins=%s%s",
+    settings.frontend_origins,
+    f" regex={settings.frontend_origin_regex}" if settings.frontend_origin_regex else "",
+)
 
 
 async def demo_loop(app: FastAPI) -> None:
@@ -164,6 +169,7 @@ allow_all_origins = "*" in settings.frontend_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if allow_all_origins else list(settings.frontend_origins),
+    allow_origin_regex=settings.frontend_origin_regex,
     allow_credentials=not allow_all_origins,
     allow_methods=["*"],
     allow_headers=["*"],

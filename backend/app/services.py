@@ -13,6 +13,7 @@ from app.defaults import (
     SENSOR_PRESENCE,
     WHO_DAILY_GUIDELINES,
 )
+from app.estimates import derived_estimates
 from app.geo import bounding_box, distance_km
 from app.schemas import ReadingCreate
 from app.store import Store
@@ -90,13 +91,17 @@ def air_quality_score(reading: dict) -> int | None:
     values = []
     co = reading.get("co_ppm")
     dust = reading.get("dust_ug_m3")
-    gas = reading.get("mq135_raw")
+    gas = reading.get("mq135_estimated_ppm")
+    raw_gas = reading.get("mq135_raw")
     if co is not None:
         values.append(min(co / 35.0, 1.0))
     if dust is not None:
         values.append(min(dust / 150.0, 1.0))
     if gas is not None:
-        values.append(min(gas / 4.0, 1.0))
+        values.append(min(gas / 2000.0, 1.0))
+    elif raw_gas is not None:
+        # Backward compatibility for older rows recorded before ppm estimates.
+        values.append(min(raw_gas / 4.0, 1.0))
     if not values:
         return None
     return round(max(0, 100 - (sum(values) / len(values)) * 100))
@@ -115,6 +120,9 @@ def status_for_score(score: int | None) -> str:
 
 
 def reading_payload(reading: dict) -> dict:
+    # Older Atlas rows only contain raw voltages. Fill the concentration fields
+    # on read so history and the latest card show useful values immediately.
+    reading = derived_estimates(reading)
     score = air_quality_score(reading)
     return {
         "id": reading.get("id"),
@@ -204,6 +212,9 @@ async def ingest_reading(
     broadcast: bool = True,
 ) -> dict:
     values = {key: value for key, value in data.model_dump().items() if value is not None}
+    # Fill estimates from raw voltages before storage. This also covers clients
+    # that still POST only mq135_raw / dust_voltage.
+    values = derived_estimates(values)
     values["timestamp"] = as_utc(values.get("timestamp")) or utc_now()
     values["created_at"] = utc_now()
     reading = await store.insert_reading(values)
@@ -237,6 +248,7 @@ def simulated_reading(location: dict | None = None) -> ReadingCreate:
         altitude=round(110 + random.uniform(-1, 1), 1),
         co_ppm=round(max(0.2, random.gauss(4.5, 2.2)), 2),
         mq135_raw=round(min(4.9, max(0.15, random.gauss(1.25, 0.45))), 3),
+        mq135_estimated_ppm=round(max(50, random.gauss(650, 220)), 1),
         dust_voltage=round(random.uniform(0.35, 1.35), 3),
         dust_ug_m3=round(max(2, random.gauss(24, 14)), 1),
         dust_particle_size="unknown",

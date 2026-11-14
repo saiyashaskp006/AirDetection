@@ -28,6 +28,7 @@
  *   I        ->  AEROHUB,1          firmware identity / handshake
  *   R0..R5   ->  V,<0..1023>        analogRead(A0..A5)
  *   D        ->  D,<0..1023>        pulse the dust LED, then sample A2
+ *   L0 / L1  ->  L,0 / L,1          LED drive polarity (0=active-low, 1=active-high)
  *
  * Anything else returns ERR,command.
  *
@@ -39,7 +40,9 @@ const uint8_t DUST_LED_PIN = 7;
 const uint8_t DUST_SENSE_PIN = A2;
 // true  = transistor/active-high drive (base pulled HIGH turns the LED on)
 // false = active-low drive (PNP high-side or direct wiring)
-const bool DUST_LED_ACTIVE_HIGH = true;
+// The Pi can change this at startup with the L0/L1 command, so
+// ARDUINO_DUST_LED_ACTIVE_HIGH in .env matches the actual wiring.
+bool dustLedActiveHigh = true;
 
 const unsigned long SERIAL_BAUD = 115200;
 const uint8_t MAX_CHANNEL = 5;  // A0..A5 on an Uno/Nano
@@ -48,7 +51,7 @@ char buffer[16];
 uint8_t length = 0;
 
 void dustLed(bool on) {
-  bool level = DUST_LED_ACTIVE_HIGH ? on : !on;
+  bool level = dustLedActiveHigh ? on : !on;
   digitalWrite(DUST_LED_PIN, level ? HIGH : LOW);
 }
 
@@ -91,6 +94,15 @@ void handleCommand() {
     int raw = analogRead(A0 + channel);
     Serial.print(F("V,"));
     Serial.println(raw);
+    return;
+  }
+
+  if (command == 'L') {
+    int mode = atoi(buffer + 1);
+    dustLedActiveHigh = (mode != 0);
+    dustLed(false);
+    Serial.print(F("L,"));
+    Serial.println(dustLedActiveHigh ? 1 : 0);
     return;
   }
 

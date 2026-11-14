@@ -42,10 +42,24 @@ export async function api(path, options = {}) {
   // GET turns a simple request into a CORS preflight, which doubles the number
   // of requests once the dashboard is polling over the internet.
   if (rest.body != null) finalHeaders["Content-Type"] = "application/json";
-  const response = await fetch(`${API_URL}${path}`, {
-    ...rest,
-    headers: finalHeaders,
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...rest,
+      headers: finalHeaders,
+    });
+  } catch (reason) {
+    // Browsers deliberately hide CORS details and report only "Failed to
+    // fetch". Include the URL and origin so the deployment mistake is obvious.
+    if (reason instanceof TypeError) {
+      const origin = typeof window !== "undefined" ? window.location.origin : "this site";
+      throw new Error(
+        `Could not reach the API at ${API_URL}. Check that the Pi backend is running, `
+        + `that VITE_API_URL is HTTPS, and that FRONTEND_ORIGINS contains ${origin}.`,
+      );
+    }
+    throw reason;
+  }
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${response.status})`);

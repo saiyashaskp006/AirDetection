@@ -91,6 +91,7 @@ class Settings:
     demo_longitude: float | None
 
     frontend_origins: tuple[str, ...]
+    frontend_origin_regex: str | None
 
     @property
     def demo_location(self) -> dict:
@@ -161,6 +162,7 @@ def get_settings() -> Settings:
         for origin in _text("FRONTEND_ORIGINS", "http://localhost:5173").split(",")
         if origin.strip()
     )
+    origin_regex = _text("FRONTEND_ORIGIN_REGEX") or None
 
     return Settings(
         data_mode=data_mode,
@@ -185,4 +187,5 @@ def get_settings() -> Settings:
         demo_latitude=demo_latitude,
         demo_longitude=demo_longitude,
         frontend_origins=origins or ("http://localhost:5173",),
+        frontend_origin_regex=origin_regex,
     )

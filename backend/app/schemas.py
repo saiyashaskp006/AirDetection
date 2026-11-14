@@ -24,7 +24,15 @@ class ReadingCreate(BaseModel):
     def require_sensor_value(self):
         if not any(
             getattr(self, key) is not None
-            for key in ("temperature", "pressure", "co_ppm", "mq135_raw", "dust_voltage", "dust_ug_m3")
+            for key in (
+                "temperature",
+                "pressure",
+                "co_ppm",
+                "mq135_raw",
+                "mq135_estimated_ppm",
+                "dust_voltage",
+                "dust_ug_m3",
+            )
         ):
             raise ValueError("At least one sensor measurement is required")
         if (self.latitude is None) != (self.longitude is None):

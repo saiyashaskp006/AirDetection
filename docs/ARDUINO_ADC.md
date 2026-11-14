@@ -35,7 +35,9 @@ The Uno's ADC is 5 V tolerant, so the MQ outputs connect **directly** — no
 
 The dust LED circuit itself does not change — only its control wire moves from
 Pi GPIO17 (board pin 11) to Arduino `D7`. If your driver is active-low (PNP or
-direct wiring), set `DUST_LED_ACTIVE_HIGH=false` at the top of the sketch.
+direct wiring), set `ARDUINO_DUST_LED_ACTIVE_HIGH=false` in `.env`; the Pi sends
+`L0` to the sketch at startup. Reflash the current sketch so it accepts that
+command.
 
 > **Power.** USB lets the Pi power the Uno, but two MQ heaters plus the dust LED
 > can approach the port's current budget. If the Pi resets or the serial link
@@ -59,6 +61,7 @@ The sketch answers a simple line-based protocol at 115200 baud:
 | `I` | `AEROHUB,1` | identity / handshake |
 | `R0` … `R5` | `V,<0..1023>` | `analogRead(A0..A5)` raw count |
 | `D` | `D,<0..1023>` | pulse the dust LED, sample `A2` |
+| `L0` / `L1` | `L,0` / `L,1` | dust LED active-low / active-high |
 
 ## 2. Plug it into the Pi and find the port
 
@@ -93,6 +96,9 @@ ARDUINO_BOOT_SECONDS=2.0      # 0 for the GPIO UART
 ARDUINO_VREF=5.0
 ARDUINO_ADC_MAX=1023
 ARDUINO_DUST_LED=true
+# true = NPN low-side/active-high, false = PNP high-side/active-low.
+# The Pi sends this to the sketch with L0/L1 at startup.
+ARDUINO_DUST_LED_ACTIVE_HIGH=true
 
 MQ_DIVIDER_RATIO=1
 DUST_DIVIDER_RATIO=1
@@ -100,7 +106,10 @@ DUST_DIVIDER_RATIO=1
 
 `ARDUINO_DUST_LED=true` means the Uno drives the dust LED and takes the sample
 itself, so the 280 µs timing is accurate. The Pi does not need GPIO for the dust
-sensor in this mode.
+sensor in this mode. Set `ARDUINO_DUST_LED_ACTIVE_HIGH=false` for a PNP
+high-side/active-low driver; reflash the current sketch so it accepts the L0/L1
+polarity command. If the dust voltage stays near zero, check the LED polarity,
+the 150 Ω LED resistor, and the transistor wiring.
 
 If you leave the LED control wire on Pi GPIO17 instead, set
 `ARDUINO_DUST_LED=false`: the Pi pulses the LED and reads `A2` over serial. That
@@ -218,7 +227,7 @@ because the sketch enforces the required gap between LED pulses.
 | `The 'pyserial' package is required` | `pip install pyserial` |
 | Values always 1023 | input above the Uno's 5 V reference; check the sensor supply |
 | Values always 0 | sensor not powered, missing common ground, wrong analog pin |
-| Dust always 0 | LED control wire still on Pi GPIO17 instead of Arduino D7, or inverted `DUST_LED_ACTIVE_HIGH` in the sketch |
+| Dust always 0 | LED control wire still on Pi GPIO17 instead of Arduino D7, or inverted `ARDUINO_DUST_LED_ACTIVE_HIGH` (try `L0`/`L1` in the serial test) |
 | Readings noisy | USB-powered sensors; add a 100 µF capacitor across the 5 V rail and keep the grounds common |
 | `ERR,channel` replies | channel outside A0–A5; check `MQ7_ADC_CHANNEL` / `MQ135_ADC_CHANNEL` / `DUST_ADC_CHANNEL` |
 | `/dev/serial0` missing | UART not enabled in `raspi-config`; reboot after enabling |

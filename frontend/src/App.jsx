@@ -336,8 +336,8 @@ function Overview({ latest, data, alerts, sensors, lastSeen, setPage, notify }) 
       <section className="metric-grid">
         <MetricCard title="Temperature" value={fmt(latest?.temperature)} unit="°C" icon={Thermometer} tone="green" data={data} dataKey="temperature" note="BMP280 · ambient" />
         <MetricCard title="Atmospheric pressure" value={fmt(latest?.pressure, 0)} unit="hPa" icon={Gauge} tone="blue" data={data} dataKey="pressure" note="BMP280 · barometric" />
-        <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="purple" data={data} dataKey="co_ppm" note="MQ-7 · calibrated reading" />
-        <MetricCard title="Dust concentration" value={fmt(latest?.dust_ug_m3, 1)} unit="µg/m³" icon={Droplets} tone="amber" data={data} dataKey="dust_ug_m3" note="Sharp · estimate requires calibration" />
+        <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="purple" data={data} dataKey="co_ppm" note="MQ-7 · estimated ppm" />
+        <MetricCard title="Dust concentration" value={fmt(latest?.dust_ug_m3, 1)} unit="µg/m³" icon={Droplets} tone="amber" data={data} dataKey="dust_ug_m3" note={latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
       </section>
       <section className="dashboard-lower">
         <article className="panel trend-panel">
@@ -414,7 +414,7 @@ function LivePage({ data, latest, status }) {
   useEffect(() => {
     let active = true;
     const start = new Date(Date.now() - windows[windowKey]).toISOString();
-    api(`/api/sensors/history?start=${encodeURIComponent(start)}&limit=50000`)
+    api(`/api/sensors/history?start=${encodeURIComponent(start)}&limit=50000&max_points=1200`)
       .then((rows) => { if (active) setWindowRows(rows); })
       .catch(() => { if (active) setWindowRows([]); });
     return () => { active = false; };
@@ -431,9 +431,9 @@ function LivePage({ data, latest, status }) {
     </div>
     <div className="metric-grid live-metrics">
       <MetricCard title="Temperature" value={fmt(latest?.temperature)} unit="°C" icon={Thermometer} tone="green" data={filtered} dataKey="temperature" note="Live value" />
-      <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="blue" data={filtered} dataKey="co_ppm" note="MQ-7" />
-      <MetricCard title="MQ-135 gas sensor" value={fmt(latest?.mq135_raw, 3)} unit="V" icon={Activity} tone="purple" data={filtered} dataKey="mq135_raw" note="Raw voltage · not calibrated" />
-      <MetricCard title="Dust estimate" value={fmt(latest?.dust_ug_m3)} unit="µg/m³" icon={Droplets} tone="amber" data={filtered} dataKey="dust_ug_m3" note="Use calibrated conversion" />
+      <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="blue" data={filtered} dataKey="co_ppm" note="MQ-7 · estimated ppm" />
+      <MetricCard title="MQ-135 gas estimate" value={fmt(latest?.mq135_estimated_ppm, 0)} unit="ppm" icon={Activity} tone="purple" data={filtered} dataKey="mq135_estimated_ppm" note="Estimated ppm · default curve" />
+      <MetricCard title="Dust estimate" value={fmt(latest?.dust_ug_m3)} unit="µg/m³" icon={Droplets} tone="amber" data={filtered} dataKey="dust_ug_m3" note={latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
     </div>
   </>;
 }
@@ -453,7 +453,7 @@ function AnalyticsPage() {
     try {
       const end = custom.end ? new Date(custom.end) : new Date();
       const start = custom.start ? new Date(custom.start) : new Date(end.getTime() - ({ "1h": 3600000, "24h": 86400000, "7d": 604800000 }[range]));
-      const query = `?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}&limit=50000`;
+      const query = `?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}&limit=50000&max_points=1500`;
       const duration = end.getTime() - start.getTime();
       const previousStart = new Date(start.getTime() - duration);
       const previousQuery = `?start=${encodeURIComponent(previousStart.toISOString())}&end=${encodeURIComponent(start.toISOString())}`;
@@ -489,7 +489,7 @@ function AnalyticsPage() {
       <button className="secondary-button" onClick={() => load()}>Apply filters</button>
     </div>
     {error && <div className="inline-error">{error}</div>}
-    <div className="stats-grid">{Object.entries({ temperature: "Temperature", co_ppm: "Carbon monoxide", mq135_raw: "MQ-135 voltage", dust_ug_m3: "Dust estimate" }).map(([key, label]) => <StatCard key={key} label={label} data={stats[key]} previous={previousStats[key]} comparing={comparePrevious} unit={key === "temperature" ? "°C" : key === "co_ppm" ? "ppm" : key === "mq135_raw" ? "V" : "µg/m³"} />)}</div>
+    <div className="stats-grid">{Object.entries({ temperature: "Temperature", co_ppm: "Carbon monoxide", mq135_estimated_ppm: "MQ-135 estimate", dust_ug_m3: "Dust estimate" }).map(([key, label]) => <StatCard key={key} label={label} data={stats[key]} previous={previousStats[key]} comparing={comparePrevious} unit={key === "temperature" ? "°C" : key === "co_ppm" || key === "mq135_estimated_ppm" ? "ppm" : "µg/m³"} />)}</div>
     <article className="panel analytics-chart"><div className="panel-heading"><div><h2>Sensor history</h2><p>{loading ? "Loading stored readings…" : `${rows.length} readings in selected period`}</p></div><span className="source-key"><i className="source-dot" /> All sources</span></div><TrendChart data={rows} /></article>
     <article className="panel table-panel"><div className="panel-heading"><div><h2>Recent readings</h2><p>Most recent records in the selected range</p></div></div><ReadingsTable rows={[...rows].reverse().slice(0, 8)} /></article>
   </>;
@@ -506,11 +506,11 @@ function StatCard({ label, data, previous, comparing, unit }) {
 
 function ReadingsTable({ rows }) {
   if (!rows.length) return <div className="empty-table">No records in this time range.</div>;
-  return <div className="table-scroll"><table><thead><tr><th>TIME</th><th>TEMP</th><th>PRESSURE</th><th>CO</th><th>MQ-135</th><th>DUST</th><th>SOURCE</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{stamp(row.timestamp)}</td><td>{fmt(row.temperature)} °C</td><td>{fmt(row.pressure, 0)} hPa</td><td>{fmt(row.co_ppm, 2)} ppm</td><td>{fmt(row.mq135_raw, 3)} V</td><td>{fmt(row.dust_ug_m3)} µg/m³</td><td><SourceBadge source={row.source} /></td></tr>)}</tbody></table></div>;
+  return <div className="table-scroll"><table><thead><tr><th>TIME</th><th>TEMP</th><th>PRESSURE</th><th>CO</th><th>MQ-135</th><th>DUST</th><th>SOURCE</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td>{stamp(row.timestamp)}</td><td>{fmt(row.temperature)} °C</td><td>{fmt(row.pressure, 0)} hPa</td><td>{fmt(row.co_ppm, 2)} ppm</td><td>{fmt(row.mq135_estimated_ppm, 0)} ppm</td><td>{fmt(row.dust_ug_m3)} µg/m³</td><td><SourceBadge source={row.source} /></td></tr>)}</tbody></table></div>;
 }
 
 function ManualPage({ onSaved, notify }) {
-  const initial = { temperature: "", pressure: "", co_ppm: "", mq135_raw: "", dust_ug_m3: "", dust_particle_size: "unknown", location_name: "", latitude: "", longitude: "", timestamp: "" };
+  const initial = { temperature: "", pressure: "", co_ppm: "", mq135_estimated_ppm: "", dust_ug_m3: "", dust_particle_size: "unknown", location_name: "", latitude: "", longitude: "", timestamp: "" };
   const [form, setForm] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -540,7 +540,7 @@ function ManualPage({ onSaved, notify }) {
         <Field label="Temperature" unit="°C" value={form.temperature} onChange={(value) => change("temperature", value)} min="-80" max="100" />
         <Field label="Atmospheric pressure" unit="hPa" value={form.pressure} onChange={(value) => change("pressure", value)} min="100" max="1200" />
         <Field label="Carbon monoxide (CO)" unit="ppm" value={form.co_ppm} onChange={(value) => change("co_ppm", value)} min="0" max="10000" />
-        <Field label="MQ-135 raw output" unit="V" value={form.mq135_raw} onChange={(value) => change("mq135_raw", value)} min="0" max="5" step="0.001" />
+        <Field label="MQ-135 estimated concentration" unit="ppm" value={form.mq135_estimated_ppm} onChange={(value) => change("mq135_estimated_ppm", value)} min="0" max="100000" />
         <Field label="Dust estimate" unit="µg/m³" value={form.dust_ug_m3} onChange={(value) => change("dust_ug_m3", value)} min="0" max="100000" />
         <label className="field"><span>Particulate type (calibrated only)</span><select value={form.dust_particle_size} onChange={(event) => change("dust_particle_size", event.target.value)}><option value="unknown">Unknown / uncalibrated</option><option value="pm2_5">PM2.5</option><option value="pm10">PM10</option></select></label>
         <Field label="Site / area name" unit="name" type="text" value={form.location_name} onChange={(value) => change("location_name", value)} maxLength="120" />
@@ -577,8 +577,8 @@ function SensorsPage({ sensors, latest }) {
   const definitions = [
     { name: "BMP280", type: "Temperature · Pressure", values: `${fmt(latest?.temperature)} °C / ${fmt(latest?.pressure, 0)} hPa`, icon: Thermometer },
     { name: "MQ-7", type: "Carbon monoxide", values: latest?.co_ppm == null ? "No reading" : `${fmt(latest.co_ppm, 2)} ppm`, icon: Cloud },
-    { name: "MQ-135", type: "Broad-spectrum gas sensor", values: latest?.mq135_raw == null ? "No reading" : `${fmt(latest.mq135_raw, 3)} V`, icon: Activity },
-    { name: "Sharp GP2Y101AU0F", type: "Optical dust sensor", values: latest?.dust_ug_m3 == null ? "No reading" : `${fmt(latest.dust_ug_m3)} µg/m³`, icon: Droplets },
+    { name: "MQ-135", type: "Broad-spectrum gas sensor", values: latest?.mq135_estimated_ppm == null ? "No reading" : `${fmt(latest.mq135_estimated_ppm, 0)} ppm`, icon: Activity },
+    { name: "Sharp GP2Y101AU0F", type: "Optical dust sensor", values: latest?.dust_ug_m3 == null ? "No reading" : `${fmt(latest.dust_ug_m3)} µg/m³${latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? " · check LED" : ""}`, icon: Droplets },
   ];
   return <>
     <PageHeading eyebrow="DEVICE FLEET" title="Sensor management" description="Monitor sensor communications, latest readings, and calibration state." />
@@ -586,7 +586,7 @@ function SensorsPage({ sensors, latest }) {
       const state = sensors.find((item) => item.sensor_name === sensor.name || (sensor.name.startsWith("Sharp") && item.sensor_name === "Sharp dust"));
       return <article className="panel sensor-row" key={sensor.name}><span className="sensor-symbol"><sensor.icon size={20} /></span><div className="sensor-identity"><strong>{sensor.name}</strong><span>{sensor.type}</span></div><div className="sensor-reading"><span>LATEST READING</span><strong>{sensor.values}</strong></div><div className="sensor-calibration"><span>CALIBRATION</span><strong>{state?.calibration_status || "Not calibrated"}</strong></div><div className={`sensor-state ${state?.status === "online" ? "online" : ""}`}><i />{state?.status || "offline"}</div></article>;
     })}</div>
-    <div className="disclaimer"><CircleAlert size={16} /><p>MQ sensors require warm-up, clean-air baseline measurements, and a load-resistor-specific calibration curve. Dust concentration is an estimate and must be validated against a reference instrument.</p></div>
+    <div className="disclaimer"><CircleAlert size={16} /><p>MQ sensors require warm-up, a clean-air baseline and a load-resistor-specific calibration curve. With blank calibration fields the dashboard uses approximate datasheet curves; these values are estimates, not reference measurements. Validate dust against a reference instrument.</p></div>
   </>;
 }
 
@@ -661,7 +661,7 @@ function SettingsPage({ notify }) {
     <div className="settings-layout">
       <section className="panel settings-panel"><div className="panel-heading"><div><h2>Pollution thresholds</h2><p>Generate warnings and critical alerts at these values.</p></div></div>
         <div className="threshold-table"><div className="threshold-header"><span>SENSOR</span><span>WARNING</span><span>CRITICAL</span><span /></div>
-          {[["co", "Carbon monoxide", "ppm"], ["mq135", "MQ-135 raw voltage", "V"], ["dust", "Dust estimate", "µg/m³"]].map(([key, label, unit]) => <div className="threshold-row" key={key}><div><strong>{label}</strong><span>{unit}</span></div><input aria-label={`${label} warning threshold`} type="number" step="0.1" value={thresholds[key]?.warning_threshold ?? ""} onChange={(event) => updateValue(key, "warning_threshold", event.target.value)} /><input aria-label={`${label} critical threshold`} type="number" step="0.1" value={thresholds[key]?.critical_threshold ?? ""} onChange={(event) => updateValue(key, "critical_threshold", event.target.value)} /><button className="save-small" disabled={busy || !thresholds[key]} onClick={() => saveThreshold(key)}>Save</button></div>)}
+          {[["co", "Carbon monoxide", "ppm"], ["mq135", "MQ-135 estimate", "ppm"], ["dust", "Dust estimate", "µg/m³"]].map(([key, label, unit]) => <div className="threshold-row" key={key}><div><strong>{label}</strong><span>{unit}</span></div><input aria-label={`${label} warning threshold`} type="number" step="0.1" value={thresholds[key]?.warning_threshold ?? ""} onChange={(event) => updateValue(key, "warning_threshold", event.target.value)} /><input aria-label={`${label} critical threshold`} type="number" step="0.1" value={thresholds[key]?.critical_threshold ?? ""} onChange={(event) => updateValue(key, "critical_threshold", event.target.value)} /><button className="save-small" disabled={busy || !thresholds[key]} onClick={() => saveThreshold(key)}>Save</button></div>)}
         </div>
         <p className="setting-note"><CircleAlert size={14} /> Thresholds are illustrative defaults. Verify units and calibrate before relying on alerts.</p>
       </section>
