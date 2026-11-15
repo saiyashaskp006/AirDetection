@@ -1,11 +1,12 @@
 import {
-  Activity, Bell, ChartNoAxesCombined, Cloud, Gauge, RadioTower, Settings2, X,
+  Activity, Bell, ChartNoAxesCombined, Cloud, Gauge, GitCompareArrows, RadioTower, Settings2, X,
 } from "lucide-react";
 
 const items = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "live", label: "Live monitoring", icon: Activity },
   { id: "analytics", label: "Analytics", icon: ChartNoAxesCombined },
+  { id: "comparison", label: "Field comparison", icon: GitCompareArrows },
   { id: "manual", label: "Manual entry", icon: Cloud },
   { id: "alerts", label: "Pollution alerts", icon: Bell },
   { id: "sensors", label: "Sensors", icon: RadioTower },

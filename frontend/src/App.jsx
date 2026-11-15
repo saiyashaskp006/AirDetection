@@ -6,6 +6,7 @@ import {
 import { Sidebar } from "./components/Sidebar";
 import { MetricCard } from "./components/MetricCard";
 import { TrendChart } from "./components/Charts";
+import { FieldComparison } from "./components/FieldComparison";
 import { LocationMap } from "./components/LocationMap";
 import { useLiveData } from "./hooks/useLiveData";
 import { API_URL, api, dataMode, websocketUrl } from "./services/api";
@@ -14,6 +15,7 @@ const pages = {
   overview: "Air quality overview",
   live: "Live monitoring",
   analytics: "Historical analytics",
+  comparison: "Location comparison",
   manual: "Manual data entry",
   alerts: "Pollution alerts",
   sensors: "Sensor management",
@@ -121,6 +123,7 @@ export default function App() {
           {page === "overview" && <Overview latest={latest} data={data} alerts={live.alerts} sensors={live.sensors} lastSeen={lastSeen} setPage={setPage} notify={setToast} />}
           {page === "live" && <LivePage data={data} latest={latest} status={live.socketStatus} />}
           {page === "analytics" && <AnalyticsPage />}
+          {page === "comparison" && <FieldComparison notify={setToast} />}
           {page === "manual" && <ManualPage onSaved={live.refresh} notify={setToast} />}
           {page === "alerts" && <AlertsPage alerts={live.alerts} />}
           {page === "sensors" && <SensorsPage sensors={live.sensors} latest={latest} />}

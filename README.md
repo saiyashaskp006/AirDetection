@@ -329,6 +329,19 @@ Put it in `backend/.env` as `DEVICE_API_KEY`, and in `raspberry_pi/.env` as
 `AEROSENSE_API_KEY`. When `DEVICE_API_KEY` is empty, ingestion is open — fine for
 a trusted lab network, not for the public internet.
 
+## Field comparison page
+
+The **Field comparison** page is intended for short field campaigns (for
+example, four 45-minute recordings at different sites). For each site, enter a
+name, latitude, longitude and time window. The page queries
+`/api/sensors/history` and `/api/sensors/statistics` for that window, then shows
+an overlaid elapsed-time chart (1-minute medians), a per-site summary table and
+a map of the recorded coordinates. The summary can be exported as CSV.
+
+Site definitions are stored in the browser's `localStorage`; raw readings stay
+in MongoDB/file storage. The time window is the database query, while the
+coordinates label the site for the comparison.
+
 ## API
 
 | Method | Path | Purpose |
