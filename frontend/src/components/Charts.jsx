@@ -17,12 +17,15 @@ const SPIKE_SIGMA = 6;
 
 export const CHART_SERIES = [
   { key: "temperature", label: "Temperature", short: "Temp", color: "#59d9ae", unit: "°C", digits: 1, spikeFloor: 2 },
-  { key: "pressure", label: "Pressure", short: "Pressure", color: "#5fd0e6", unit: " hPa", digits: 0, spikeFloor: 5 },
+  // Pressure has a much larger numeric range than the gas/dust series, so it
+  // would flatten the combined "All" chart. Keep it available as its own tab.
+  { key: "pressure", label: "Pressure", short: "Pressure", color: "#5fd0e6", unit: " hPa", digits: 0, spikeFloor: 5, showInAll: false },
   { key: "co_ppm", label: "Carbon monoxide", short: "CO", color: "#58b8ff", unit: " ppm", digits: 2, spikeFloor: 5 },
   { key: "mq135_estimated_ppm", label: "MQ-135 estimate", short: "MQ-135", color: "#b69aff", unit: " ppm", digits: 0, spikeFloor: 30 },
   { key: "dust_ug_m3", label: "Dust estimate", short: "Dust", color: "#f6bd60", unit: " µg/m³", digits: 1, spikeFloor: 30 },
 ];
 
+const ALL_SERIES = CHART_SERIES.filter((item) => item.showInAll !== false);
 const seriesByKey = Object.fromEntries(CHART_SERIES.map((item) => [item.key, item]));
 
 function numeric(value) {
@@ -196,7 +199,7 @@ export function TrendChart({ data, compact = false }) {
 
   const filtered = useMemo(() => {
     if (!hideSpikes) return { rows: normalized, hidden: 0 };
-    const keys = selectedKey === "all" ? CHART_SERIES.map((item) => item.key) : [selectedKey];
+    const keys = selectedKey === "all" ? ALL_SERIES.map((item) => item.key) : [selectedKey];
     let rows = normalized;
     let hidden = 0;
     for (const key of keys) {
@@ -207,7 +210,7 @@ export function TrendChart({ data, compact = false }) {
     return { rows, hidden };
   }, [normalized, selectedKey, hideSpikes]);
 
-  const visibleSeries = selectedKey === "all" ? CHART_SERIES : CHART_SERIES.filter((item) => item.key === selectedKey);
+  const visibleSeries = selectedKey === "all" ? ALL_SERIES : CHART_SERIES.filter((item) => item.key === selectedKey);
   const chartData = filtered.rows;
   const span = chartData.length > 1 ? chartData[chartData.length - 1].ts - chartData[0].ts : 0;
   const hasData = chartData.some((row) => visibleSeries.some((item) => numeric(row[item.key]) != null));
@@ -237,6 +240,7 @@ export function TrendChart({ data, compact = false }) {
             role="tab"
             aria-selected={selectedKey === "all"}
             className={`chart-series-tab${selectedKey === "all" ? " selected" : ""}`}
+            title="Pressure has its own tab and is excluded from the combined chart"
             onClick={() => setSelectedKey("all")}
           >
             All
