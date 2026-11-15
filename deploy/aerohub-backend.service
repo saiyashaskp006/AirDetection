@@ -1,21 +1,28 @@
 [Unit]
 Description=AERO-HUB FastAPI backend
-After=network-online.target
-Wants=network-online.target
+# Start the app after the basic network stack is available. Do NOT depend on
+# network-online.target here: that can delay boot while waiting for Wi-Fi,
+# while Wi-Fi itself is managed by NetworkManager/wpa_supplicant. The backend
+# retries if MongoDB is not reachable yet.
+After=network.target
+Wants=network.target
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
-# Change User and the three paths below if your Pi user or repo location differs.
+# Change User, Group, and the paths below if your Pi user or repo location differs.
+# The user must be able to open the Arduino serial port (/dev/serial0 or
+# /dev/ttyACM0); on Raspberry Pi OS that normally means membership in dialout.
 User=pi
 Group=pi
 WorkingDirectory=/home/pi/AirDetection/backend
 Environment=PYTHONUNBUFFERED=1
 # 127.0.0.1 is enough when Tailscale Funnel or Cloudflare Tunnel runs on the
 # same Pi. Use --host 0.0.0.0 only if you also want direct LAN access.
-ExecStart=/home/pi/AirDetection/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+ExecStart=/home/pi/AirDetection/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 1
 Restart=always
-RestartSec=5
-TimeoutStopSec=20
+RestartSec=10
+TimeoutStopSec=30
 
 [Install]
 WantedBy=multi-user.target

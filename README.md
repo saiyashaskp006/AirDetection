@@ -622,7 +622,8 @@ Pi, follow [`docs/VERCEL_DEPLOY.md`](docs/VERCEL_DEPLOY.md). In short:
    add the Vercel origin to `FRONTEND_ORIGINS` on the Pi.
 4. Install the sample service in
    [`deploy/aerohub-backend.service`](deploy/aerohub-backend.service) so the Pi
-   backend restarts after a reboot.
+   backend restarts after a reboot. It starts after `network.target` and does
+   not manage or block Wi-Fi.
 
 For production: use HTTPS/WSS, a restricted CORS list, `DEVICE_API_KEY`, a
 least-privilege MongoDB user, backups, and a process supervisor/systemd unit.

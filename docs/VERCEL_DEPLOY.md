@@ -251,6 +251,14 @@ sudo systemctl enable --now aerohub-backend
 sudo systemctl status aerohub-backend
 ```
 
+The unit starts after `network.target`, **not** `network-online.target`, so it
+does not hold up boot waiting for Wi-Fi. Wi-Fi association is handled separately
+by NetworkManager or `wpa_supplicant`; this service only starts the Python
+backend and retries if MongoDB is not reachable yet. If Wi-Fi still does not
+auto-connect after a reboot, check that the saved connection has autoconnect
+enabled (`nmcli connection show`, then
+`sudo nmcli connection modify "<SSID>" connection.autoconnect yes`).
+
 Logs:
 
 ```bash
