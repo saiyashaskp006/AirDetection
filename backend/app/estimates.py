@@ -71,13 +71,36 @@ def gas_ppm(
     return round(min(ppm, limit), 2)
 
 
+def dust_calibration() -> tuple[float, float]:
+    """Return ``(zero_voltage, ug_m3_per_volt)`` for the dust sensor."""
+    return (
+        _env_float("DUST_ZERO_VOLTAGE", DUST_ZERO_VOLTAGE_DEFAULT),
+        _env_float("DUST_UG_M3_PER_V", DUST_UG_M3_PER_V_DEFAULT),
+    )
+
+
 def dust_ug_m3(voltage: float | None) -> float | None:
     """Estimate ug/m3 from the Sharp GP2Y1010AU0F linear output."""
     if voltage is None:
         return None
-    zero = _env_float("DUST_ZERO_VOLTAGE", DUST_ZERO_VOLTAGE_DEFAULT)
-    scale = _env_float("DUST_UG_M3_PER_V", DUST_UG_M3_PER_V_DEFAULT)
+    zero, scale = dust_calibration()
     return round(max(0.0, (voltage - zero) * scale), 2)
+
+
+def dust_low_threshold() -> float:
+    """Voltage below which the dust signal is probably an LED/power fault.
+
+    The datasheet's ~0.9 V no-dust output is only typical; units vary from
+    roughly 0 V to 1.5 V. Use half of the configured zero so a calibrated
+    low-output unit does not keep showing a false "signal low" warning.
+    """
+    zero, _ = dust_calibration()
+    return min(0.5, max(0.01, zero * 0.5))
+
+
+def dust_signal_low(voltage: float | None) -> bool:
+    """True when the raw dust output is below the configured baseline."""
+    return voltage is not None and voltage < dust_low_threshold()
 
 
 def derived_estimates(reading: dict) -> dict:

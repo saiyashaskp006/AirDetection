@@ -137,9 +137,11 @@ LCD_ENABLED=false
 # Optional calibration overrides. Blank values use approximate built-in curves:
 #   MQ-7   19.32 * (Rs/R0)^-0.64
 #   MQ-135 116.602 * (Rs/R0)^-2.769
-#   Dust   (Vo - 0.9 V) * 200 ug/m3 per V
+#   Dust   (Vo - DUST_ZERO_VOLTAGE) * DUST_UG_M3_PER_V
 # Values are estimates, not reference measurements. Replace them after
-# calibrating against a known gas concentration or dust meter.
+# calibrating against a known gas concentration or dust meter. For dust, use the
+# clean-air voltage from the serial D test as DUST_ZERO_VOLTAGE (0.9 V is only
+# the datasheet typical; real units vary widely).
 MQ7_R0_KOHM=
 MQ7_CURVE_SLOPE=
 MQ7_CURVE_INTERCEPT=

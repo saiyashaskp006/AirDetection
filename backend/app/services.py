@@ -13,7 +13,7 @@ from app.defaults import (
     SENSOR_PRESENCE,
     WHO_DAILY_GUIDELINES,
 )
-from app.estimates import derived_estimates
+from app.estimates import derived_estimates, dust_signal_low
 from app.geo import bounding_box, distance_km
 from app.schemas import ReadingCreate
 from app.store import Store
@@ -135,6 +135,7 @@ def reading_payload(reading: dict) -> dict:
         "mq135_estimated_ppm": reading.get("mq135_estimated_ppm"),
         "dust_voltage": reading.get("dust_voltage"),
         "dust_ug_m3": reading.get("dust_ug_m3"),
+        "dust_signal_low": dust_signal_low(reading.get("dust_voltage")),
         "dust_particle_size": reading.get("dust_particle_size"),
         "location_name": reading.get("location_name"),
         "latitude": reading.get("latitude"),

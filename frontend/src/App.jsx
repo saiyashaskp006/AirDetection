@@ -337,7 +337,7 @@ function Overview({ latest, data, alerts, sensors, lastSeen, setPage, notify }) 
         <MetricCard title="Temperature" value={fmt(latest?.temperature)} unit="°C" icon={Thermometer} tone="green" data={data} dataKey="temperature" note="BMP280 · ambient" />
         <MetricCard title="Atmospheric pressure" value={fmt(latest?.pressure, 0)} unit="hPa" icon={Gauge} tone="blue" data={data} dataKey="pressure" note="BMP280 · barometric" />
         <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="purple" data={data} dataKey="co_ppm" note="MQ-7 · estimated ppm" />
-        <MetricCard title="Dust concentration" value={fmt(latest?.dust_ug_m3, 1)} unit="µg/m³" icon={Droplets} tone="amber" data={data} dataKey="dust_ug_m3" note={latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
+        <MetricCard title="Dust concentration" value={fmt(latest?.dust_ug_m3, 1)} unit="µg/m³" icon={Droplets} tone="amber" data={data} dataKey="dust_ug_m3" note={latest?.dust_signal_low ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
       </section>
       <section className="dashboard-lower">
         <article className="panel trend-panel">
@@ -433,7 +433,7 @@ function LivePage({ data, latest, status }) {
       <MetricCard title="Temperature" value={fmt(latest?.temperature)} unit="°C" icon={Thermometer} tone="green" data={filtered} dataKey="temperature" note="Live value" />
       <MetricCard title="Carbon monoxide" value={fmt(latest?.co_ppm, 2)} unit="ppm" icon={Cloud} tone="blue" data={filtered} dataKey="co_ppm" note="MQ-7 · estimated ppm" />
       <MetricCard title="MQ-135 gas estimate" value={fmt(latest?.mq135_estimated_ppm, 0)} unit="ppm" icon={Activity} tone="purple" data={filtered} dataKey="mq135_estimated_ppm" note="Estimated ppm · default curve" />
-      <MetricCard title="Dust estimate" value={fmt(latest?.dust_ug_m3)} unit="µg/m³" icon={Droplets} tone="amber" data={filtered} dataKey="dust_ug_m3" note={latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
+      <MetricCard title="Dust estimate" value={fmt(latest?.dust_ug_m3)} unit="µg/m³" icon={Droplets} tone="amber" data={filtered} dataKey="dust_ug_m3" note={latest?.dust_signal_low ? "Sharp · signal low; check LED/wiring" : "Sharp · estimated curve"} />
     </div>
   </>;
 }
@@ -578,7 +578,7 @@ function SensorsPage({ sensors, latest }) {
     { name: "BMP280", type: "Temperature · Pressure", values: `${fmt(latest?.temperature)} °C / ${fmt(latest?.pressure, 0)} hPa`, icon: Thermometer },
     { name: "MQ-7", type: "Carbon monoxide", values: latest?.co_ppm == null ? "No reading" : `${fmt(latest.co_ppm, 2)} ppm`, icon: Cloud },
     { name: "MQ-135", type: "Broad-spectrum gas sensor", values: latest?.mq135_estimated_ppm == null ? "No reading" : `${fmt(latest.mq135_estimated_ppm, 0)} ppm`, icon: Activity },
-    { name: "Sharp GP2Y101AU0F", type: "Optical dust sensor", values: latest?.dust_ug_m3 == null ? "No reading" : `${fmt(latest.dust_ug_m3)} µg/m³${latest?.dust_voltage != null && latest.dust_voltage < 0.5 ? " · check LED" : ""}`, icon: Droplets },
+    { name: "Sharp GP2Y101AU0F", type: "Optical dust sensor", values: latest?.dust_ug_m3 == null ? "No reading" : `${fmt(latest.dust_ug_m3)} µg/m³${latest?.dust_signal_low ? " · check LED" : ""}`, icon: Droplets },
   ];
   return <>
     <PageHeading eyebrow="DEVICE FLEET" title="Sensor management" description="Monitor sensor communications, latest readings, and calibration state." />

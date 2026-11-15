@@ -476,9 +476,11 @@ values are blank, so the dashboard shows estimated CO ppm, MQ-135 ppm and dust
 each MQ sensor, determine its actual load resistance, burn-in/warm-up and
 clean-air baseline; derive and validate an `Rs/R0` curve against known reference
 concentrations. Set `{MQ7|MQ135}_R0_KOHM`, `{MQ7|MQ135}_CURVE_SLOPE` and
-`{MQ7|MQ135}_CURVE_INTERCEPT` from that calibration. Derive and verify
-`DUST_ZERO_VOLTAGE` and `DUST_UG_M3_PER_V` against a reference instrument. Use
-the defaults only for trends and demonstrations, not for compliance or health
+`{MQ7|MQ135}_CURVE_INTERCEPT` from that calibration. For dust, measure the
+sensor's clean-air output with the LED pulsing and set `DUST_ZERO_VOLTAGE` to
+that value, then derive and verify `DUST_UG_M3_PER_V` against a reference
+instrument. The datasheet typical 0.9 V zero is not valid for every unit. Use the
+defaults only for trends and demonstrations, not for compliance or health
 decisions.
 
 ## WHO, CPCB and WMO interpretation

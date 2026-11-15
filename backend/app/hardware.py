@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.config import Settings
-from app.estimates import dust_ug_m3, gas_ppm
+from app.estimates import dust_signal_low, dust_ug_m3, gas_ppm
 
 logger = logging.getLogger("aerohub.hardware")
 
@@ -245,13 +245,13 @@ class HardwareReader:
 
         dust_voltage = self._read_dust_voltage()
         if dust_voltage is not None:
-            if dust_voltage < 0.5 and not self._dust_low_warned:
+            if dust_signal_low(dust_voltage) and not self._dust_low_warned:
                 self._dust_low_warned = True
                 logger.warning(
-                    "Dust output is %.3f V; a working GP2Y1010AU0F should be about "
-                    "0.9 V with the LED on. Check the D7 transistor/LED polarity "
-                    "(ARDUINO_DUST_LED_ACTIVE_HIGH), the 150 ohm LED resistor and "
-                    "common ground.",
+                    "Dust output is %.3f V, below the configured baseline. Check "
+                    "that the LED is pulsing, that DUST_ZERO_VOLTAGE matches the "
+                    "sensor's clean-air output, and that the LED polarity "
+                    "(ARDUINO_DUST_LED_ACTIVE_HIGH) is correct.",
                     dust_voltage,
                 )
             payload["dust_voltage"] = dust_voltage

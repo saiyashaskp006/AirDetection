@@ -39,6 +39,11 @@ direct wiring), set `ARDUINO_DUST_LED_ACTIVE_HIGH=false` in `.env`; the Pi sends
 `L0` to the sketch at startup. Reflash the current sketch so it accepts that
 command.
 
+The common DFRobot test sketch uses `digitalWrite(ledPin, LOW)` to turn the
+LED on. A direct connection from the sensor's LED control pin to `D7` is
+therefore **active-low** and needs `ARDUINO_DUST_LED_ACTIVE_HIGH=false`; use
+`true` only with an NPN transistor/active-high driver.
+
 > **Power.** USB lets the Pi power the Uno, but two MQ heaters plus the dust LED
 > can approach the port's current budget. If the Pi resets or the serial link
 > drops, use a powered USB hub, or power the Uno separately and switch to the

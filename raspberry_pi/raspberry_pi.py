@@ -211,6 +211,13 @@ def calibrated_dust_estimate(voltage):
     return round(max(0.0, (voltage - zero) * scale), 2)
 
 
+def dust_signal_low(voltage):
+    """True when the dust output is below the configured clean-air baseline."""
+    zero = _env_float("DUST_ZERO_VOLTAGE", DUST_ZERO_VOLTAGE_DEFAULT)
+    threshold = min(0.5, max(0.01, zero * 0.5))
+    return voltage is not None and voltage < threshold
+
+
 def read_sensors(adc, dust_led):
     global _dust_low_warned
     payload = {
@@ -234,13 +241,13 @@ def read_sensors(adc, dust_led):
 
     dust_voltage = read_dust_voltage(adc, dust_led) if adc is not None else None
     if dust_voltage is not None:
-        if dust_voltage < 0.5 and not _dust_low_warned:
+        if dust_signal_low(dust_voltage) and not _dust_low_warned:
             _dust_low_warned = True
             logger.warning(
-                "Dust output is %.3f V; a working GP2Y1010AU0F should be about "
-                "0.9 V with the LED on. Check the D7 transistor/LED polarity "
-                "(ARDUINO_DUST_LED_ACTIVE_HIGH), the 150 ohm LED resistor and "
-                "common ground.",
+                "Dust output is %.3f V, below the configured baseline. Check "
+                "that the LED is pulsing, that DUST_ZERO_VOLTAGE matches the "
+                "sensor's clean-air output, and that the LED polarity "
+                "(ARDUINO_DUST_LED_ACTIVE_HIGH) is correct.",
                 dust_voltage,
             )
         payload["dust_voltage"] = dust_voltage

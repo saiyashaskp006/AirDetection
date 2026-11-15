@@ -209,7 +209,10 @@ the most accurate option because USB latency never stretches the pulse. The
 current sketch also accepts `ARDUINO_DUST_LED_ACTIVE_HIGH` from the Pi
 (`true` for an NPN low-side driver, `false` for PNP high-side/active-low). If
 the raw dust voltage is stuck near zero, verify LED polarity, the 150 Ω series
-resistor and the transistor; a working sensor reads about 0.9 V with the LED on.
+resistor and the transistor. A working sensor often reads about 0.9 V with the
+LED on, but **0.9 V is only the datasheet typical value**; real units can sit
+anywhere from roughly 0 V to 1.5 V. Measure your own clean-air voltage and use
+that as `DUST_ZERO_VOLTAGE`.
 
 Otherwise the Pi pulses the LED, waits 0.28 ms, reads the ADC, then waits
 ~9.7 ms.
@@ -233,6 +236,12 @@ Two possible LED circuits:
 If dust reads a constant value, try flipping the polarity (`L0`/`L1` in the
 serial test). If the polarity is wrong the LED never emits and the output stays
 flat near 0 V.
+
+> The common DFRobot test sketch drives the LED **active-low**:
+> `digitalWrite(ledPin, LOW)` turns it on. If the sensor's LED control pin is
+> wired directly to Arduino `D7`, set
+> `ARDUINO_DUST_LED_ACTIVE_HIGH=false`. Use `true` only with an NPN transistor
+> (or another active-high driver).
 
 ## BMP280 / HW-611
 
@@ -500,7 +509,7 @@ EOF
 | GPS page stays `GPS waiting` | app not streaming, wrong IP/port, phone and Pi on different networks |
 | GPS fix but no map marker | `location_name` blank and no `GPS_LOCATION_NAME` |
 | CO/AQ `n/a` | MQ AOUT is 0 V or the ADC channel is unpowered; check AOUT, ground and the channel number |
-| Dust always 0 µg/m³ | Dust voltage is at/below the 0.9 V zero point; check LED polarity, D7 transistor, 150 Ω resistor and common ground |
+| Dust always 0 µg/m³ | Dust voltage is at/below `DUST_ZERO_VOLTAGE`. Measure your sensor's clean-air output and set the zero to that value; then check LED polarity, D7 transistor, 150 Ω resistor and common ground |
 | Dust `n/a` | The Arduino is not answering the `D` command; reflash the current `air_sensors.ino` and check the serial test below |
 
 The backend now uses approximate datasheet curves when calibration is blank, so
@@ -527,7 +536,19 @@ sudo systemctl start aerohub-backend
 ```
 
 Expected: `I` prints `AEROHUB,1`, `L1`/`L0` print `L,1`/`L,0`, and `D` prints
-`D,<raw>`. With the LED pulsing, `D` should be roughly 180–200 counts (~0.9 V) in
-clean air and higher in dust. If `D` stays near 0 while `R2` is around 180, the
-LED drive/polarity is wrong; try the other `L` value. If `D` gets no reply,
-reflash the current sketch.
+`D,<raw>`. With the LED pulsing, `D` should be higher than with the LED off. A
+healthy unit often reads roughly 180–200 counts (~0.9 V) in clean air, but many
+units sit much lower (for example 40–60 counts). If `D` stays near 0 while `R2`
+is around 180, the LED drive/polarity is wrong; try the other `L` value. If `D`
+gets no reply, reflash the current sketch.
+
+Once you know the clean-air `D` voltage, set it as `DUST_ZERO_VOLTAGE` in
+`backend/.env`, keep `DUST_UG_M3_PER_V=200` (datasheet sensitivity), and restart
+the backend. The estimate is then `(D_voltage - DUST_ZERO_VOLTAGE) × 200`.
+
+> **Common test-sketch formula.** The widely copied
+> `dustDensity = 170 * calcVoltage - 0.1` is not a calibrated µg/m³ value: the
+> standard empirical form is `(0.17 * V - 0.1) * 1000`, i.e. `170 * V - 100`
+> µg/m³, and it assumes a zero near 0.6 V. The dashboard instead subtracts your
+> measured clean-air voltage. A test sketch reporting 40–60 at ~0.3 V is
+> therefore not directly comparable; use the raw voltage for calibration.

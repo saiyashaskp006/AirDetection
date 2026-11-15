@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator
 
 from app.defaults import DEFAULT_THRESHOLDS, LEGACY_MQ135_THRESHOLDS
-from app.estimates import derived_estimates
+from app.estimates import derived_estimates, dust_calibration, dust_ug_m3
 from app.timeutil import as_utc, utc_now
 
 logger = logging.getLogger("aerohub.store")
@@ -590,6 +590,7 @@ class MongoStore(Store):
         )
 
         await self._backfill_estimates()
+        await self._recalibrate_dust()
 
     async def _backfill_estimates(self) -> None:
         """Add ppm/dust estimates to old rows that only have raw voltages.
@@ -654,6 +655,59 @@ class MongoStore(Store):
                 logger.info("Backfilled ppm/dust estimates for %s old readings", updated)
         except Exception as exc:
             logger.warning("Could not backfill old ppm/dust estimates: %s", exc)
+
+    async def _recalibrate_dust(self) -> None:
+        """Recompute stored dust estimates when the calibration changes.
+
+        The original backfill used the default 0.9 V zero, which clamps many
+        real sensors to 0. If ``DUST_ZERO_VOLTAGE`` or ``DUST_UG_M3_PER_V`` is
+        changed later, new readings would use the new curve while history kept
+        the old zero. This migration rewrites rows that still have the raw
+        ``dust_voltage``. It is idempotent and runs only when the configured
+        calibration differs from the last one applied.
+        """
+        zero, scale = dust_calibration()
+        current = {"zero": zero, "scale": scale}
+        flag = "dust_calibration_backfill_v1"
+        try:
+            previous = await self.get_setting(flag, None)
+        except Exception as exc:
+            logger.warning("Could not read the dust calibration flag: %s", exc)
+            return
+        if previous == current:
+            return
+
+        from pymongo import UpdateOne
+
+        operations = []
+        updated = 0
+        try:
+            async for row in self.readings.find(
+                {"dust_voltage": {"$exists": True, "$ne": None}},
+                {"dust_voltage": 1},
+            ):
+                estimate = dust_ug_m3(row.get("dust_voltage"))
+                if estimate is None:
+                    continue
+                operations.append(
+                    UpdateOne({"_id": row["_id"]}, {"$set": {"dust_ug_m3": estimate}})
+                )
+                if len(operations) >= 500:
+                    await self.readings.bulk_write(operations, ordered=False)
+                    updated += len(operations)
+                    operations.clear()
+            if operations:
+                await self.readings.bulk_write(operations, ordered=False)
+                updated += len(operations)
+            await self.set_setting(flag, current)
+            logger.info(
+                "Recalibrated dust estimates for %s readings (zero=%s V, scale=%s ug/m3/V)",
+                updated,
+                current["zero"],
+                current["scale"],
+            )
+        except Exception as exc:
+            logger.warning("Could not recalibrate stored dust estimates: %s", exc)
 
     async def health(self) -> dict[str, Any]:
         await self.client.admin.command("ping")
