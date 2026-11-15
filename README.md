@@ -442,9 +442,14 @@ Summary:
   see the doc). Set `ADC_BACKEND=arduino`, `ARDUINO_VREF=5.0` and
   `ARDUINO_DUST_LED=true`.
   Details: [`docs/ARDUINO_ADC.md`](docs/ARDUINO_ADC.md).
-- **Arduino pins:** MQ-7 `AOUT` → `A0`, MQ-135 `AOUT` → `A1`, Sharp dust `Vo` →
-  `A2`, dust LED drive → `D7` (1 kΩ to the NPN base). The Uno ADC is 5 V
+- **Arduino pins:** MQ-7 `AOUT` → `A0`, MQ-135 `AOUT` → `A1`, Sharp dust
+  `Vo` (pin 5) → `A2`, dust `S-GND` (pin 4) → GND, dust LED (pin 3) → `D7`
+  (through 1 kΩ to an NPN base if you use a transistor). The Uno ADC is 5 V
   tolerant, so connect the MQ outputs directly and keep `MQ_DIVIDER_RATIO=1`.
+  With the no-transistor direct-sink LED, connect pin 3 directly to `D7`, keep
+  the 150 Ω resistor on pin 1, and set
+  `ARDUINO_DUST_LED_ACTIVE_HIGH=false`; see
+  [`docs/HARDWARE_WIRING.md`](docs/HARDWARE_WIRING.md).
 - **If you later buy an ADS1115** (I²C, 16-bit): `VDD` → 3.3 V (pin 1), `GND` →
   pin 6, `SCL` → pin 5, `SDA` → pin 3, `ADDR` → GND for `0x48`; set
   `ADC_BACKEND=ads1115`. Then fit a 10 kΩ/20 kΩ divider on each MQ `AOUT` and

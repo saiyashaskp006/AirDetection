@@ -195,13 +195,25 @@ already conditioned. Leave it at `1` unless you added a divider after it.
 
 ## Sharp GP2Y1010AU0F dust sensor
 
-You already have the capacitor/resistor circuit, and only two signal wires leave
-the board:
+The bare sensor uses a 6-pin JST connector. Follow the pin numbers moulded on
+the connector, not a guessed orientation:
 
-| Sensor signal | Connects to |
-|---|---|
-| Analog output `Vo` | Arduino `A2` (or ADS1115 `A2`, or MCP3008 CH2/pin 3) |
-| LED drive | Arduino `D7` (or Pi GPIO17, board pin 11) |
+| Sensor pin | Name | Connects to |
+|---:|---|---|
+| 1 | `V-LED` | +5 V through the **150 Ω** resistor |
+| 2 | `LED-GND` | common GND |
+| 3 | `LED` | Arduino `D7` (or Pi GPIO17, board pin 11) |
+| 4 | `S-GND` | common GND |
+| 5 | `Vo` | Arduino `A2` (or ADS1115 `A2`, or MCP3008 CH2/pin 3) |
+| 6 | `Vcc` | +5 V, with **220 µF** and **0.1 µF** to GND |
+
+The 220 µF electrolytic and 0.1 µF ceramic capacitors go across the sensor's
+5 V supply, near the sensor. The 220 µF negative stripe goes to GND. Use the
+150 Ω resistor between +5 V and pin 1; do not connect pin 1 directly to 5 V.
+
+The common cable colours are white (1, `V-LED`), blue (2, `LED-GND`), green
+(3, `LED`), yellow (4, `S-GND`), black (5, `Vo`) and red (6, `Vcc`), but verify
+them against the connector marking because cable vendors vary.
 
 With `ADC_BACKEND=arduino` and `ARDUINO_DUST_LED=true`, the Uno pulses the LED
 for 280 µs and samples `A2` itself, then sends the result over serial. That is
@@ -229,13 +241,18 @@ Two possible LED circuits:
   emitter → GND, collector → LED cathode, LED anode → 150 Ω → 5 V. With the
   Arduino driving it, set `ARDUINO_DUST_LED_ACTIVE_HIGH=true`. If the Pi drives
   GPIO17 instead, set `DUST_LED_ACTIVE_HIGH=true`.
-- **Direct sink.** 5 V → 150 Ω → LED anode, LED cathode → GPIO17. Set the
-  matching `*_ACTIVE_HIGH` variable to `false` (default). This sinks ~20 mA,
-  above the 16 mA recommended maximum.
+- **Direct sink (no transistor).** 5 V → 150 Ω → sensor pin 1 (`V-LED`);
+  sensor pin 2 (`LED-GND`) → GND; sensor pin 3 (`LED`) → Arduino `D7` or Pi
+  GPIO17. Drive the pin **LOW** to turn the LED on. Set the matching
+  `*_ACTIVE_HIGH` variable to `false`. This sinks ~20 mA, above the 16 mA
+  recommended maximum, so prefer the transistor circuit when possible.
 
 If dust reads a constant value, try flipping the polarity (`L0`/`L1` in the
 serial test). If the polarity is wrong the LED never emits and the output stays
-flat near 0 V.
+flat near 0 V. After an Arduino reset the sketch defaults to active-high, so for
+a direct-sink LED send `L0` and confirm the reply is `L,0` before sending `D`.
+The Pi normally sends this automatically from
+`ARDUINO_DUST_LED_ACTIVE_HIGH=false`.
 
 > The common DFRobot test sketch drives the LED **active-low**:
 > `digitalWrite(ledPin, LOW)` turns it on. If the sensor's LED control pin is
@@ -510,6 +527,7 @@ EOF
 | GPS fix but no map marker | `location_name` blank and no `GPS_LOCATION_NAME` |
 | CO/AQ `n/a` | MQ AOUT is 0 V or the ADC channel is unpowered; check AOUT, ground and the channel number |
 | Dust always 0 µg/m³ | Dust voltage is at/below `DUST_ZERO_VOLTAGE`. Measure your sensor's clean-air output and set the zero to that value; then check LED polarity, D7 transistor, 150 Ω resistor and common ground |
+| Arduino `D` reply is only `0`–`2` | `A2` is at ~0 V. Check that `Vo` is on **pin 5** and `S-GND` on **pin 4**; with a direct-sink LED, send `L0` before `D` or set `ARDUINO_DUST_LED_ACTIVE_HIGH=false`. Also check 5 V, the 150 Ω resistor and common ground |
 | Dust `n/a` | The Arduino is not answering the `D` command; reflash the current `air_sensors.ino` and check the serial test below |
 
 The backend now uses approximate datasheet curves when calibration is blank, so
