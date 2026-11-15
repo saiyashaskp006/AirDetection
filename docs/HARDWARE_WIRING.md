@@ -36,7 +36,7 @@ ground gives nonsense readings.
 | MQ-7 analog | MQ-7 `AOUT` | `A0` (direct) | `A0` (via divider) | pin 1 (CH0 via divider) |
 | MQ-135 analog | MQ-135 `AOUT` | `A1` (direct) | `A1` (via divider) | pin 2 (CH1 via divider) |
 | Dust analog | GP2Y1010AU0F `Vo` | `A2` | `A2` | pin 3 (CH2) |
-| Dust LED | GP2Y1010AU0F LED pin | `D7` | GPIO17, board pin 11 | GPIO17, board pin 11 |
+| Dust LED | GP2Y1010AU0F LED pin | `D5` | GPIO17, board pin 11 | GPIO17, board pin 11 |
 | ADC bus | — | USB **or** GND + TX/RX | I²C pins 3/5 | SPI pins 23/21/19/24 |
 | BMP280 | SDA/SCL | I²C pins 3/5 | I²C pins 3/5 | I²C pins 3/5 |
 | LCD | SDA/SCL | I²C pins 3/5 | I²C pins 3/5 | I²C pins 3/5 |
@@ -46,7 +46,7 @@ ground gives nonsense readings.
 Full instructions live in [`ARDUINO_ADC.md`](ARDUINO_ADC.md). Short version:
 
 1. Flash [`arduino/air_sensors/air_sensors.ino`](../arduino/air_sensors/air_sensors.ino).
-2. Wire `A0` ← MQ-7, `A1` ← MQ-135, `A2` ← dust `Vo`, `D7` → LED transistor.
+2. Wire `A0` ← MQ-7, `A1` ← MQ-135, `A2` ← dust `Vo`, `D5` → LED transistor.
 3. Connect to the Pi over USB, **or** power the Uno separately and use the GPIO
    UART (`GND` + `TX`→pin 10 + `RX`←pin 8; see the doc for the 5 V→3.3 V divider
    on Arduino TX).
@@ -202,7 +202,7 @@ the connector, not a guessed orientation:
 |---:|---|---|
 | 1 | `V-LED` | +5 V through the **150 Ω** resistor |
 | 2 | `LED-GND` | common GND |
-| 3 | `LED` | Arduino `D7` (or Pi GPIO17, board pin 11) |
+| 3 | `LED` | Arduino `D5` (or Pi GPIO17, board pin 11) |
 | 4 | `S-GND` | common GND |
 | 5 | `Vo` | Arduino `A2` (or ADS1115 `A2`, or MCP3008 CH2/pin 3) |
 | 6 | `Vcc` | +5 V, with **220 µF** and **0.1 µF** to GND |
@@ -221,10 +221,11 @@ the most accurate option because USB latency never stretches the pulse. The
 current sketch also accepts `ARDUINO_DUST_LED_ACTIVE_HIGH` from the Pi
 (`true` for an NPN low-side driver, `false` for PNP high-side/active-low). If
 the raw dust voltage is stuck near zero, verify LED polarity, the 150 Ω series
-resistor and the transistor. A working sensor often reads about 0.9 V with the
-LED on, but **0.9 V is only the datasheet typical value**; real units can sit
-anywhere from roughly 0 V to 1.5 V. Measure your own clean-air voltage and use
-that as `DUST_ZERO_VOLTAGE`.
+resistor and the transistor. A working GP2Y1014AU0F often reads about 0.9 V
+with the LED on, but **0.9 V is only the datasheet typical value**; real units
+can sit anywhere from roughly 0 V to 1.5 V. The installed unit reads about
+0.15–0.25 V in clean air, so this build uses **0.15 V** as the zero. Measure
+your own clean-air voltage after changing the sensor or wiring.
 
 Otherwise the Pi pulses the LED, waits 0.28 ms, reads the ADC, then waits
 ~9.7 ms.
@@ -237,12 +238,12 @@ Otherwise the Pi pulses the LED, waits 0.28 ms, reads the ADC, then waits
 
 Two possible LED circuits:
 
-- **Transistor (recommended).** Arduino `D7`/GPIO17 → 1 kΩ → NPN base,
+- **Transistor (recommended).** Arduino `D5`/GPIO17 → 1 kΩ → NPN base,
   emitter → GND, collector → LED cathode, LED anode → 150 Ω → 5 V. With the
   Arduino driving it, set `ARDUINO_DUST_LED_ACTIVE_HIGH=true`. If the Pi drives
   GPIO17 instead, set `DUST_LED_ACTIVE_HIGH=true`.
 - **Direct sink (no transistor).** 5 V → 150 Ω → sensor pin 1 (`V-LED`);
-  sensor pin 2 (`LED-GND`) → GND; sensor pin 3 (`LED`) → Arduino `D7` or Pi
+  sensor pin 2 (`LED-GND`) → GND; sensor pin 3 (`LED`) → Arduino `D5` or Pi
   GPIO17. Drive the pin **LOW** to turn the LED on. Set the matching
   `*_ACTIVE_HIGH` variable to `false`. This sinks ~20 mA, above the 16 mA
   recommended maximum, so prefer the transistor circuit when possible.
@@ -256,7 +257,7 @@ The Pi normally sends this automatically from
 
 > The common DFRobot test sketch drives the LED **active-low**:
 > `digitalWrite(ledPin, LOW)` turns it on. If the sensor's LED control pin is
-> wired directly to Arduino `D7`, set
+> wired directly to Arduino `D5`, set
 > `ARDUINO_DUST_LED_ACTIVE_HIGH=false`. Use `true` only with an NPN transistor
 > (or another active-high driver).
 
@@ -526,7 +527,7 @@ EOF
 | GPS page stays `GPS waiting` | app not streaming, wrong IP/port, phone and Pi on different networks |
 | GPS fix but no map marker | `location_name` blank and no `GPS_LOCATION_NAME` |
 | CO/AQ `n/a` | MQ AOUT is 0 V or the ADC channel is unpowered; check AOUT, ground and the channel number |
-| Dust always 0 µg/m³ | Dust voltage is at/below `DUST_ZERO_VOLTAGE`. Measure your sensor's clean-air output and set the zero to that value; then check LED polarity, D7 transistor, 150 Ω resistor and common ground |
+| Dust always 0 µg/m³ | Dust voltage is at/below `DUST_ZERO_VOLTAGE`. Measure your sensor's clean-air output and set the zero to that value; then check LED polarity, D5 transistor, 150 Ω resistor and common ground |
 | Arduino `D` reply is only `0`–`2` | `A2` is at ~0 V. Check that `Vo` is on **pin 5** and `S-GND` on **pin 4**; with a direct-sink LED, send `L0` before `D` or set `ARDUINO_DUST_LED_ACTIVE_HIGH=false`. Also check 5 V, the 150 Ω resistor and common ground |
 | Dust `n/a` | The Arduino is not answering the `D` command; reflash the current `air_sensors.ino` and check the serial test below |
 
@@ -555,10 +556,11 @@ sudo systemctl start aerohub-backend
 
 Expected: `I` prints `AEROHUB,1`, `L1`/`L0` print `L,1`/`L,0`, and `D` prints
 `D,<raw>`. With the LED pulsing, `D` should be higher than with the LED off. A
-healthy unit often reads roughly 180–200 counts (~0.9 V) in clean air, but many
-units sit much lower (for example 40–60 counts). If `D` stays near 0 while `R2`
-is around 180, the LED drive/polarity is wrong; try the other `L` value. If `D`
-gets no reply, reflash the current sketch.
+healthy unit can read roughly 180–200 counts (~0.9 V) in clean air, but many
+units sit much lower. The installed unit reads about **30–50 counts
+(~0.15–0.25 V)** in clean air. If `D` stays near 0 while `R2` is around 180,
+the LED drive/polarity is wrong; try the other `L` value. If `D` gets no reply,
+reflash the current sketch.
 
 Once you know the clean-air `D` voltage, set it as `DUST_ZERO_VOLTAGE` in
 `backend/.env`, keep `DUST_UG_M3_PER_V=200` (datasheet sensitivity), and restart

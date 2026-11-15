@@ -59,7 +59,7 @@ GAS_CALIBRATION_DEFAULTS = {
     "MQ7": (10.0, -1.5625, 2.009386),       # 19.32 * (Rs/R0)^-0.64
     "MQ135": (76.63, -0.361141, 0.746373),  # 116.602 * (Rs/R0)^-2.769
 }
-DUST_ZERO_VOLTAGE_DEFAULT = 0.9
+DUST_ZERO_VOLTAGE_DEFAULT = 0.15
 DUST_UG_M3_PER_V_DEFAULT = 200.0
 _dust_low_warned = False
 
@@ -199,10 +199,11 @@ def read_dust_voltage(adc, led):
 def calibrated_dust_estimate(voltage):
     """Estimate ug/m3 from the Sharp sensor's linear output.
 
-    The defaults match the GP2Y1010AU0F datasheet (~0.9 V at zero dust and
-    ~0.005 V per ug/m3). DUST_ZERO_VOLTAGE and DUST_UG_M3_PER_V override them
-    with values from a reference instrument. Invalid values fall back to the
-    defaults so they can never stop a reading from being uploaded.
+    The installed GP2Y1014AU0F measures about 0.15 V in clean air; the default
+    slope is the datasheet sensitivity (~0.005 V per ug/m3). DUST_ZERO_VOLTAGE
+    and DUST_UG_M3_PER_V override them with values from a reference instrument.
+    Invalid values fall back to the defaults so they can never stop a reading
+    from being uploaded.
     """
     zero = _env_float("DUST_ZERO_VOLTAGE", DUST_ZERO_VOLTAGE_DEFAULT)
     scale = _env_float("DUST_UG_M3_PER_V", DUST_UG_M3_PER_V_DEFAULT)

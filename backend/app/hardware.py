@@ -214,9 +214,9 @@ class HardwareReader:
             return None
 
     def _calibrated_dust(self, voltage: float | None) -> float | None:
-        # GP2Y1010AU0F datasheet: ~0.9 V at zero dust, ~0.005 V per ug/m3
-        # (200 ug/m3 per volt). Users can override these with a reference
-        # meter. A non-zero output below 0.9 V is clamped to zero.
+        # Measured 0.15 V clean-air zero for the installed GP2Y1014AU0F;
+        # 0.005 V per ug/m3 = 200 ug/m3 per volt. Users can override both
+        # values with a reference meter. Outputs below the zero clamp to 0.
         return dust_ug_m3(voltage)
 
     def read(self) -> dict:

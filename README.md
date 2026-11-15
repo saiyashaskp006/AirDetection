@@ -443,10 +443,10 @@ Summary:
   `ARDUINO_DUST_LED=true`.
   Details: [`docs/ARDUINO_ADC.md`](docs/ARDUINO_ADC.md).
 - **Arduino pins:** MQ-7 `AOUT` → `A0`, MQ-135 `AOUT` → `A1`, Sharp dust
-  `Vo` (pin 5) → `A2`, dust `S-GND` (pin 4) → GND, dust LED (pin 3) → `D7`
+  `Vo` (pin 5) → `A2`, dust `S-GND` (pin 4) → GND, dust LED (pin 3) → `D5`
   (through 1 kΩ to an NPN base if you use a transistor). The Uno ADC is 5 V
   tolerant, so connect the MQ outputs directly and keep `MQ_DIVIDER_RATIO=1`.
-  With the no-transistor direct-sink LED, connect pin 3 directly to `D7`, keep
+  With the no-transistor direct-sink LED, connect pin 3 directly to `D5`, keep
   the 150 Ω resistor on pin 1, and set
   `ARDUINO_DUST_LED_ACTIVE_HIGH=false`; see
   [`docs/HARDWARE_WIRING.md`](docs/HARDWARE_WIRING.md).
@@ -459,7 +459,7 @@ Summary:
   `AGND`/`DGND` → GND, `CLK` → pin 23, `DOUT` → pin 21, `DIN` → pin 19,
   `CS/SHDN` → pin 24, then set `ADC_BACKEND=mcp3008`.
 - Sharp dust `Vo` → `A2` on whichever ADC; with the Arduino, set
-  `ARDUINO_DUST_LED=true` and let it drive `D7` (datasheet-accurate timing).
+  `ARDUINO_DUST_LED=true` and let it drive `D5` (datasheet-accurate timing).
   Set `ARDUINO_DUST_LED_ACTIVE_HIGH=true` for an NPN low-side driver or
   `false` for PNP high-side/active-low wiring. If the Pi drives the LED
   instead, use `DUST_LED_ACTIVE_HIGH`.
@@ -497,9 +497,10 @@ concentrations. Set `{MQ7|MQ135}_R0_KOHM`, `{MQ7|MQ135}_CURVE_SLOPE` and
 `{MQ7|MQ135}_CURVE_INTERCEPT` from that calibration. For dust, measure the
 sensor's clean-air output with the LED pulsing and set `DUST_ZERO_VOLTAGE` to
 that value, then derive and verify `DUST_UG_M3_PER_V` against a reference
-instrument. The datasheet typical 0.9 V zero is not valid for every unit. Use the
-defaults only for trends and demonstrations, not for compliance or health
-decisions.
+instrument. The datasheet typical 0.9 V zero is not valid for every unit; the
+installed GP2Y1014AU0F measured about 0.15 V in clean air, which is the default
+used by this build. Use the defaults only for trends and demonstrations, not
+for compliance or health decisions.
 
 ## WHO, CPCB and WMO interpretation
 

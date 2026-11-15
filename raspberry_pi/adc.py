@@ -227,7 +227,7 @@ class SerialAdc(AnalogSource):
         timeout: float = 0.5,
         boot_seconds: float = 2.0,
         dust_led: bool = True,
-        dust_led_active_high: bool = True,
+        dust_led_active_high: bool = False,
     ) -> None:
         try:
             import serial
@@ -374,7 +374,7 @@ def create_adc() -> AnalogSource | None:
             timeout=_env_float("ARDUINO_TIMEOUT", 0.5),
             boot_seconds=_env_float("ARDUINO_BOOT_SECONDS", 2.0),
             dust_led=_env_bool("ARDUINO_DUST_LED", True),
-            dust_led_active_high=_env_bool("ARDUINO_DUST_LED_ACTIVE_HIGH", True),
+            dust_led_active_high=_env_bool("ARDUINO_DUST_LED_ACTIVE_HIGH", False),
         )
 
     raise ValueError(

@@ -14,7 +14,7 @@ MQ-7 AOUT  ──────────► A0 ┐
 MQ-135 AOUT ─────────► A1 ├─ Arduino Uno ──USB──► Raspberry Pi
 Dust Vo    ──────────► A2 ┘        ▲
                                    │  (or GND + TX/RX, no USB)
-Dust LED drive ──► D7 ── 1kΩ ── NPN base
+Dust LED drive ──► D5 ── 1kΩ ── NPN base
 ```
 
 The Uno's ADC is 5 V tolerant, so the MQ outputs connect **directly** — no
@@ -27,20 +27,20 @@ The Uno's ADC is 5 V tolerant, so the MQ outputs connect **directly** — no
 | MQ-7 analog | MQ-7 `AOUT` | Arduino `A0` |
 | MQ-135 analog | MQ-135 `AOUT` | Arduino `A1` |
 | Dust analog | GP2Y1010AU0F `Vo` | Arduino `A2` |
-| Dust LED control | LED transistor base (through 1 kΩ) | Arduino `D7` |
+| Dust LED control | LED transistor base (through 1 kΩ) | Arduino `D5` |
 | Ground | every sensor GND | Arduino `GND` (common with the Pi) |
 | Data (USB) | Arduino USB port | Raspberry Pi USB port |
 | Data (UART) | Arduino `TX`/`RX` (pins 1/0) | Pi `RX`/`TX` (pins 10/8) + GND, see the UART section |
 | BMP280 / LCD | SDA/SCL | Pi I²C pins 3/5, as before |
 
 The dust LED circuit itself does not change — only its control wire moves from
-Pi GPIO17 (board pin 11) to Arduino `D7`. If your driver is active-low (PNP or
+Pi GPIO17 (board pin 11) to Arduino `D5`. If your driver is active-low (PNP or
 direct wiring), set `ARDUINO_DUST_LED_ACTIVE_HIGH=false` in `.env`; the Pi sends
 `L0` to the sketch at startup. Reflash the current sketch so it accepts that
 command.
 
 The common DFRobot test sketch uses `digitalWrite(ledPin, LOW)` to turn the
-LED on. A direct connection from the sensor's LED control pin to `D7` is
+LED on. A direct connection from the sensor's LED control pin to `D5` is
 therefore **active-low** and needs `ARDUINO_DUST_LED_ACTIVE_HIGH=false`; use
 `true` only with an NPN transistor/active-high driver.
 
@@ -232,7 +232,7 @@ because the sketch enforces the required gap between LED pulses.
 | `The 'pyserial' package is required` | `pip install pyserial` |
 | Values always 1023 | input above the Uno's 5 V reference; check the sensor supply |
 | Values always 0 | sensor not powered, missing common ground, wrong analog pin |
-| Dust always 0 | LED control wire still on Pi GPIO17 instead of Arduino D7, or inverted `ARDUINO_DUST_LED_ACTIVE_HIGH` (try `L0`/`L1` in the serial test) |
+| Dust always 0 | LED control wire still on Pi GPIO17 instead of Arduino D5, or inverted `ARDUINO_DUST_LED_ACTIVE_HIGH` (try `L0`/`L1` in the serial test) |
 | Readings noisy | USB-powered sensors; add a 100 µF capacitor across the 5 V rail and keep the grounds common |
 | `ERR,channel` replies | channel outside A0–A5; check `MQ7_ADC_CHANNEL` / `MQ135_ADC_CHANNEL` / `DUST_ADC_CHANNEL` |
 | `/dev/serial0` missing | UART not enabled in `raspi-config`; reboot after enabling |

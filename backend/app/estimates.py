@@ -18,7 +18,9 @@ GAS_CALIBRATION_DEFAULTS: dict[str, tuple[float, float, float]] = {
     # MQ-135: 116.602 * (Rs/R0)^-2.769
     "MQ135": (76.63, -0.361141, 0.746373),
 }
-DUST_ZERO_VOLTAGE_DEFAULT = 0.9
+# Measured clean-air output for this GP2Y1014AU0F (LED pulsing, D5 direct
+# sink). Replace with the current unit's measured zero if the sensor changes.
+DUST_ZERO_VOLTAGE_DEFAULT = 0.15
 DUST_UG_M3_PER_V_DEFAULT = 200.0
 
 
@@ -90,9 +92,10 @@ def dust_ug_m3(voltage: float | None) -> float | None:
 def dust_low_threshold() -> float:
     """Voltage below which the dust signal is probably an LED/power fault.
 
-    The datasheet's ~0.9 V no-dust output is only typical; units vary from
-    roughly 0 V to 1.5 V. Use half of the configured zero so a calibrated
-    low-output unit does not keep showing a false "signal low" warning.
+    The configured zero is the practical clean-air baseline, not a fault
+    threshold. Units vary from roughly 0 V to 1.5 V. Use half of the configured
+    zero so a calibrated low-output unit does not keep showing a false
+    "signal low" warning.
     """
     zero, _ = dust_calibration()
     return min(0.5, max(0.01, zero * 0.5))

@@ -140,16 +140,16 @@ LCD_ENABLED=false
 #   Dust   (Vo - DUST_ZERO_VOLTAGE) * DUST_UG_M3_PER_V
 # Values are estimates, not reference measurements. Replace them after
 # calibrating against a known gas concentration or dust meter. For dust, use the
-# clean-air voltage from the serial D test as DUST_ZERO_VOLTAGE (0.9 V is only
-# the datasheet typical; real units vary widely).
+# clean-air voltage from the serial D test as DUST_ZERO_VOLTAGE (this unit
+# measured 0.15 V; 0.9 V is only the datasheet typical).
 MQ7_R0_KOHM=
 MQ7_CURVE_SLOPE=
 MQ7_CURVE_INTERCEPT=
 MQ135_R0_KOHM=
 MQ135_CURVE_SLOPE=
 MQ135_CURVE_INTERCEPT=
-DUST_ZERO_VOLTAGE=
-DUST_UG_M3_PER_V=
+DUST_ZERO_VOLTAGE=0.15
+DUST_UG_M3_PER_V=200
 ```
 
 If you use the Uno over USB instead of the GPIO UART, set:

@@ -13,7 +13,7 @@
  *   Arduino A0  <- MQ-7   AOUT   (direct; the Uno ADC is 5 V tolerant)
  *   Arduino A1  <- MQ-135 AOUT   (direct)
  *   Arduino A2  <- Sharp dust Vo
- *   Arduino D7  -> 1 kOhm -> NPN base  (dust LED transistor, same board)
+ *   Arduino D5  -> dust LED pin 3 (direct sink) or 1 kOhm -> NPN base
  *   Arduino GND <-> Pi GND and sensor GND
  *   Arduino USB -> Raspberry Pi USB
  *
@@ -36,13 +36,13 @@
  * Tools -> Port -> the port that appeared when you plugged it into the Pi.
  */
 
-const uint8_t DUST_LED_PIN = 7;
+const uint8_t DUST_LED_PIN = 5;
 const uint8_t DUST_SENSE_PIN = A2;
 // true  = transistor/active-high drive (base pulled HIGH turns the LED on)
 // false = active-low drive (PNP high-side or direct wiring)
-// The Pi can change this at startup with the L0/L1 command, so
-// ARDUINO_DUST_LED_ACTIVE_HIGH in .env matches the actual wiring.
-bool dustLedActiveHigh = true;
+// This build uses the no-transistor direct-sink circuit on D5, so LOW turns
+// the LED on. The Pi can still override this at startup with L0/L1.
+bool dustLedActiveHigh = false;
 
 const unsigned long SERIAL_BAUD = 115200;
 const uint8_t MAX_CHANNEL = 5;  // A0..A5 on an Uno/Nano
